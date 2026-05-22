@@ -72,7 +72,9 @@ void main(List<String> arguments) {
 
   if (dryRun) {
     print('=== DRY RUN MODE ===');
-    print('The following commands would be executed to force complete recompilation:');
+    print(
+      'The following commands would be executed to force complete recompilation:',
+    );
     for (final pkg in packages) {
       final deactivateArgs = pkg.buildDeactivateArgs();
       final activateArgs = pkg.buildActivateArgs();
@@ -113,7 +115,9 @@ void main(List<String> arguments) {
       if (rollbackRes.exitCode != 0) {
         print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
         print(rollbackRes.stderr);
-        print('\nTo manually restore, resolve any network/environment issues and run:');
+        print(
+          '\nTo manually restore, resolve any network/environment issues and run:',
+        );
         print('  $sdk ${activateArgs.join(' ')}\n');
         results.add(
           PackageReinstallResult(
@@ -124,7 +128,9 @@ void main(List<String> arguments) {
           ),
         );
       } else {
-        print('[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.');
+        print(
+          '[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.',
+        );
         results.add(
           PackageReinstallResult(
             name: pkg.name,
@@ -173,8 +179,8 @@ void main(List<String> arguments) {
     final statusStr = res.status == ReinstallStatus.success
         ? 'Success'
         : res.status == ReinstallStatus.rolledBack
-            ? 'Rolled Back'
-            : 'Failed';
+        ? 'Rolled Back'
+        : 'Failed';
 
     final finalVer = finalVersions[name];
     String versionChange;
