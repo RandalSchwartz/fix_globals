@@ -84,6 +84,7 @@ void main(List<String> arguments) {
   }
 
   print('Reinstalling and recompiling packages...');
+  final results = <PackageReinstallResult>[];
   for (final pkg in packages) {
     print('--------------------------------------------------');
     print('Processing ${pkg.name} (${pkg.version})...');
@@ -114,8 +115,23 @@ void main(List<String> arguments) {
         print(rollbackRes.stderr);
         print('\nTo manually restore, resolve any network/environment issues and run:');
         print('  $sdk ${activateArgs.join(' ')}\n');
+        results.add(
+          PackageReinstallResult(
+            name: pkg.name,
+            initialVersion: pkg.version,
+            status: ReinstallStatus.failed,
+            error: actRes.stderr.toString(),
+          ),
+        );
       } else {
         print('[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.');
+        results.add(
+          PackageReinstallResult(
+            name: pkg.name,
+            initialVersion: pkg.version,
+            status: ReinstallStatus.rolledBack,
+          ),
+        );
       }
     } else {
       final out = actRes.stdout.toString().trim();
@@ -123,10 +139,73 @@ void main(List<String> arguments) {
         print(out);
       }
       print('Successfully reactivated and recompiled ${pkg.name}!');
+      results.add(
+        PackageReinstallResult(
+          name: pkg.name,
+          initialVersion: pkg.version,
+          status: ReinstallStatus.success,
+        ),
+      );
     }
   }
+
   print('--------------------------------------------------');
+  print('Fetching final package versions...');
+  final finalResult = Process.runSync(sdk, ['pub', 'global', 'list']);
+  final Map<String, String> finalVersions = {};
+  if (finalResult.exitCode == 0) {
+    final finalLines = finalResult.stdout.toString().split('\n');
+    for (final line in finalLines) {
+      final pkg = parsePubGlobalLine(line);
+      if (pkg != null) {
+        finalVersions[pkg.name] = pkg.version;
+      }
+    }
+  }
+
+  print('\n==================================================');
+  print('            REINSTALLATION SUMMARY');
+  print('==================================================');
+  print('${'Package'.padRight(25)} ${'Status'.padRight(13)} Version Change');
+  print('--------------------------------------------------');
+  for (final res in results) {
+    final name = res.name;
+    final statusStr = res.status == ReinstallStatus.success
+        ? 'Success'
+        : res.status == ReinstallStatus.rolledBack
+            ? 'Rolled Back'
+            : 'Failed';
+
+    final finalVer = finalVersions[name];
+    String versionChange;
+    if (res.status == ReinstallStatus.failed || finalVer == null) {
+      versionChange = '${res.initialVersion} -> [Deactivated]';
+    } else if (res.initialVersion == finalVer) {
+      versionChange = '${res.initialVersion} (recompiled)';
+    } else {
+      versionChange = '${res.initialVersion} -> $finalVer';
+    }
+
+    print('${name.padRight(25)} ${statusStr.padRight(13)} $versionChange');
+  }
+  print('==================================================');
   print('All done!');
+}
+
+enum ReinstallStatus { success, rolledBack, failed }
+
+class PackageReinstallResult {
+  final String name;
+  final String initialVersion;
+  final ReinstallStatus status;
+  final String? error;
+
+  PackageReinstallResult({
+    required this.name,
+    required this.initialVersion,
+    required this.status,
+    this.error,
+  });
 }
 
 void printUsage(ArgParser parser) {
