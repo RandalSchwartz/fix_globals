@@ -14,7 +14,10 @@ void main() {
       expect(pkg.origin, isNull);
 
       final actArgs = pkg.buildActivateArgs();
-      expect(actArgs, equals(['pub', 'global', 'activate', 'build_runner']));
+      expect(
+        actArgs,
+        equals(['pub', 'global', 'activate', 'build_runner', '--overwrite']),
+      );
     });
 
     test('Parses path packages correctly', () {
@@ -37,6 +40,7 @@ void main() {
           '--source',
           'path',
           '/Users/merlyn/dev/my_pkg',
+          '--overwrite',
         ]),
       );
     });
@@ -73,6 +77,7 @@ void main() {
           '--source',
           'git',
           'git@github.com:org/my_git.git',
+          '--overwrite',
         ]),
       );
     });
@@ -101,6 +106,7 @@ void main() {
           'git@github.com:org/my_git.git',
           '--git-ref',
           'main',
+          '--overwrite',
         ]),
       );
     });
@@ -129,6 +135,7 @@ void main() {
           'git@github.com:org/my_git.git',
           '--git-path',
           'packages/my_git',
+          '--overwrite',
         ]),
       );
     });
@@ -155,6 +162,7 @@ void main() {
           '--hosted-url',
           'https://onepub.dev',
           'custom_tool',
+          '--overwrite',
         ]),
       );
     });

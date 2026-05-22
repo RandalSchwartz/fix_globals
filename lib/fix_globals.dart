@@ -31,9 +31,17 @@ class GlobalPackage {
   List<String> buildActivateArgs() {
     switch (source) {
       case PackageSource.hosted:
-        return ['pub', 'global', 'activate', name];
+        return ['pub', 'global', 'activate', name, '--overwrite'];
       case PackageSource.path:
-        return ['pub', 'global', 'activate', '--source', 'path', origin!];
+        return [
+          'pub',
+          'global',
+          'activate',
+          '--source',
+          'path',
+          origin!,
+          '--overwrite',
+        ];
       case PackageSource.git:
         final args = ['pub', 'global', 'activate', '--source', 'git', origin!];
         if (gitRef != null) {
@@ -42,6 +50,7 @@ class GlobalPackage {
         if (gitPath != null) {
           args.addAll(['--git-path', gitPath!]);
         }
+        args.add('--overwrite');
         return args;
       case PackageSource.customHosted:
         return [
@@ -53,6 +62,7 @@ class GlobalPackage {
           '--hosted-url',
           origin!,
           name,
+          '--overwrite',
         ];
     }
   }
