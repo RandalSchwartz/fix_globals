@@ -1,3 +1,7 @@
+## 1.0.1
+
+- Explicitly declared supported desktop platforms (Linux, macOS, Windows) in `pubspec.yaml` to exclude non-applicable mobile/web platform tags on pub.dev.
+
 ## 1.0.0
 
 - Initial release of `fix_globals`!

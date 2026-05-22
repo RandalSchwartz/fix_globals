@@ -1,8 +1,14 @@
 name: fix_globals
 description: A command-line utility to cleanly reinstall and refresh all globally activated Dart and Flutter packages from their original sources (pub, path, git, and custom registries).
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/RandalSchwartz/fix_globals
 issue_tracker: https://github.com/RandalSchwartz/fix_globals/issues
+
+platforms:
+  linux:
+  macos:
+  windows:
+
 
 executables:
   fix-globals: fix_globals
