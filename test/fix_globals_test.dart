@@ -55,6 +55,20 @@ void main() {
       expect(pkg2!.origin, equals('/Users/merlyn/dev/my_pkg'));
     });
 
+    test('Parses paths and git references containing spaces correctly', () {
+      final line1 =
+          'my_pkg 1.0.0 at path "/Users/merlyn/My Projects/Dart/my_pkg"';
+      final pkg1 = parsePubGlobalLine(line1);
+      expect(pkg1!.origin, equals('/Users/merlyn/My Projects/Dart/my_pkg'));
+
+      final line2 =
+          'my_git 1.2.3 from git "https://github.com/org/my git.git" at ref "main branch" at path "sub folder/pkg"';
+      final pkg2 = parsePubGlobalLine(line2);
+      expect(pkg2!.origin, equals('https://github.com/org/my git.git'));
+      expect(pkg2.gitRef, equals('main branch'));
+      expect(pkg2.gitPath, equals('sub folder/pkg'));
+    });
+
     test('Parses simple git packages correctly', () {
       final line = 'my_git 1.2.3 from git "git@github.com:org/my_git.git"';
       final pkg = parsePubGlobalLine(line);
