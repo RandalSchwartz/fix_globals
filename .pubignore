@@ -1,0 +1,11 @@
+# Patterns to ignore when publishing to pub.dev
+# (Any files matching these patterns will be excluded from the published package, but will remain in git)
+
+# Development artifacts and checklists
+implementation_plan.md
+publish_checklist.md
+walkthrough.md
+
+# Local test configurations or caches
+.dart_tool/
+pubspec.lock
