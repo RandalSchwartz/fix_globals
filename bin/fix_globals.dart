@@ -72,33 +72,57 @@ void main(List<String> arguments) {
 
   if (dryRun) {
     print('=== DRY RUN MODE ===');
-    print('The following commands would be executed (atomically overwriting existing activations):');
+    print('The following commands would be executed to force complete recompilation:');
     for (final pkg in packages) {
+      final deactivateArgs = pkg.buildDeactivateArgs();
       final activateArgs = pkg.buildActivateArgs();
+      print('  $sdk ${deactivateArgs.join(' ')}');
       print('  $sdk ${activateArgs.join(' ')}');
     }
     print('====================');
     exit(0);
   }
 
-  print('Reinstalling packages atomically...');
+  print('Reinstalling and recompiling packages...');
   for (final pkg in packages) {
     print('--------------------------------------------------');
-    print('Reinstalling ${pkg.name} (${pkg.version})...');
+    print('Processing ${pkg.name} (${pkg.version})...');
 
+    // 1. Deactivate to force recompilation of same-version packages
+    final deactivateArgs = pkg.buildDeactivateArgs();
+    print('Running: $sdk ${deactivateArgs.join(' ')}');
+    final deactRes = Process.runSync(sdk, deactivateArgs);
+    if (deactRes.exitCode != 0) {
+      print('Warning: Failed to deactivate ${pkg.name}:');
+      print(deactRes.stderr);
+    }
+
+    // 2. Reactivate with the original source and parameters (including --overwrite)
     final activateArgs = pkg.buildActivateArgs();
     print('Running: $sdk ${activateArgs.join(' ')}');
     final actRes = Process.runSync(sdk, activateArgs);
     if (actRes.exitCode != 0) {
-      print('Error: Failed to reinstall ${pkg.name}:');
+      print('Error: Failed to activate ${pkg.name}!');
       print(actRes.stderr);
-      print('Safe Overwrite Protection: The previous installation of ${pkg.name} remains active and untouched.');
+      print('');
+      print('[ROLLBACK] Attempting to restore ${pkg.name}...');
+
+      // Rollback reactivation attempt
+      final rollbackRes = Process.runSync(sdk, activateArgs);
+      if (rollbackRes.exitCode != 0) {
+        print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
+        print(rollbackRes.stderr);
+        print('\nTo manually restore, resolve any network/environment issues and run:');
+        print('  $sdk ${activateArgs.join(' ')}\n');
+      } else {
+        print('[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.');
+      }
     } else {
       final out = actRes.stdout.toString().trim();
       if (out.isNotEmpty) {
         print(out);
       }
-      print('Successfully reactivated ${pkg.name}!');
+      print('Successfully reactivated and recompiled ${pkg.name}!');
     }
   }
   print('--------------------------------------------------');
