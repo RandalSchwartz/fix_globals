@@ -1,4 +1,4 @@
-import 'package:new_fix_globals/new_fix_globals.dart';
+import 'package:fix_globals/fix_globals.dart';
 import 'package:test/test.dart';
 
 void main() {

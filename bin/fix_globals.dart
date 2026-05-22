@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:new_fix_globals/new_fix_globals.dart';
+import 'package:fix_globals/fix_globals.dart';
 
 void main(List<String> arguments) {
   final parser = ArgParser()
@@ -122,7 +122,7 @@ void main(List<String> arguments) {
 }
 
 void printUsage(ArgParser parser) {
-  print('Usage: new_fix_globals [options]');
+  print('Usage: fix-globals [options]');
   print(
     'Reinstalls (deactivates and reactivates) all globally activated pub packages.',
   );

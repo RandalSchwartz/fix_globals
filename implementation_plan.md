@@ -1,10 +1,10 @@
-# Goal: `new_fix_globals` - Robust Global Package Reinstaller
+# Goal: `fix_globals` - Robust Global Package Reinstaller
 
-We will implement a robust Dart-based CLI tool inside this directory (`/Users/merlyn/Projects/Dart/new_fix_globals`) to replace the simplified shell-based `/Users/merlyn/bin/fix-globals` script. The tool will correctly parse the output of `pub global list` and automatically handle re-activating packages from various sources (pub.dev, local path, git, and custom hosted registries) with the correct arguments.
+We will implement a robust Dart-based CLI tool inside this directory (`/Users/merlyn/Projects/Dart/fix_globals`) to replace the simplified shell-based `/Users/merlyn/bin/fix-globals` script. The tool will correctly parse the output of `pub global list` and automatically handle re-activating packages from various sources (pub.dev, local path, git, and custom hosted registries) with the correct arguments.
 
 ## User Review Required
 
-We are implementing this command directly inside `/Users/merlyn/Projects/Dart/new_fix_globals`. 
+We are implementing this command directly inside `/Users/merlyn/Projects/Dart/fix_globals`. 
 
 We will offer two main options:
 1. `--dry-run` or `-n`: Print out the commands that would be executed without running them.
@@ -12,10 +12,10 @@ We will offer two main options:
 
 ## Proposed Changes
 
-### [MODIFY] [bin/new_fix_globals.dart](file:///Users/merlyn/Projects/Dart/new_fix_globals/bin/new_fix_globals.dart)
+### [MODIFY] [bin/fix_globals.dart](file:///Users/merlyn/Projects/Dart/fix_globals/bin/fix_globals.dart)
 The main entry point will parse CLI options (using manual argument checking to keep dependencies minimal and compilation extremely fast) and run the execution flow.
 
-### [MODIFY] [lib/new_fix_globals.dart](file:///Users/merlyn/Projects/Dart/new_fix_globals/lib/new_fix_globals.dart)
+### [MODIFY] [lib/fix_globals.dart](file:///Users/merlyn/Projects/Dart/fix_globals/lib/fix_globals.dart)
 This will contain the core parser and shell command executors. 
 
 #### Parsing Logic
@@ -30,5 +30,5 @@ For each, we will build the exact list of command tokens needed to run `pub glob
 ## Verification Plan
 
 We will test the code by compiling/running it locally and verifying that it successfully parses different kinds of package outputs.
-- Running: `dart bin/new_fix_globals.dart --dry-run`
-- Running: `dart bin/new_fix_globals.dart`
+- Running: `dart bin/fix_globals.dart --dry-run`
+- Running: `dart bin/fix_globals.dart`
