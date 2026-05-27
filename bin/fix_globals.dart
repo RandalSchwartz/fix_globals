@@ -18,6 +18,12 @@ void main(List<String> arguments) {
       help: 'SDK to use: "flutter" or "dart".',
     )
     ..addFlag(
+      'update',
+      abbr: 'u',
+      negatable: false,
+      help: 'Only pull package updates and skip deactivation.',
+    )
+    ..addFlag(
       'help',
       abbr: 'h',
       negatable: false,
@@ -41,6 +47,7 @@ void main(List<String> arguments) {
 
   final dryRun = argResults['dry-run'] as bool;
   final sdk = argResults['sdk'] as String;
+  final update = argResults['update'] as bool;
 
   print('Fetching globally activated packages using "$sdk pub global list"...');
   final listResult = Process.runSync(sdk, ['pub', 'global', 'list']);
@@ -72,32 +79,46 @@ void main(List<String> arguments) {
 
   if (dryRun) {
     print('=== DRY RUN MODE ===');
-    print(
-      'The following commands would be executed to force complete recompilation:',
-    );
-    for (final pkg in packages) {
-      final deactivateArgs = pkg.buildDeactivateArgs();
-      final activateArgs = pkg.buildActivateArgs();
-      print('  $sdk ${deactivateArgs.join(' ')}');
-      print('  $sdk ${activateArgs.join(' ')}');
+    if (update) {
+      print('The following commands would be executed to pull package updates:');
+      for (final pkg in packages) {
+        final activateArgs = pkg.buildActivateArgs();
+        print('  $sdk ${activateArgs.join(' ')}');
+      }
+    } else {
+      print(
+        'The following commands would be executed to force complete recompilation:',
+      );
+      for (final pkg in packages) {
+        final deactivateArgs = pkg.buildDeactivateArgs();
+        final activateArgs = pkg.buildActivateArgs();
+        print('  $sdk ${deactivateArgs.join(' ')}');
+        print('  $sdk ${activateArgs.join(' ')}');
+      }
     }
     print('====================');
     exit(0);
   }
 
-  print('Reinstalling and recompiling packages...');
+  if (update) {
+    print('Updating and reactivating packages...');
+  } else {
+    print('Reinstalling and recompiling packages...');
+  }
   final results = <PackageReinstallResult>[];
   for (final pkg in packages) {
     print('--------------------------------------------------');
     print('Processing ${pkg.name} (${pkg.version})...');
 
-    // 1. Deactivate to force recompilation of same-version packages
-    final deactivateArgs = pkg.buildDeactivateArgs();
-    print('Running: $sdk ${deactivateArgs.join(' ')}');
-    final deactRes = Process.runSync(sdk, deactivateArgs);
-    if (deactRes.exitCode != 0) {
-      print('Warning: Failed to deactivate ${pkg.name}:');
-      print(deactRes.stderr);
+    if (!update) {
+      // 1. Deactivate to force recompilation of same-version packages
+      final deactivateArgs = pkg.buildDeactivateArgs();
+      print('Running: $sdk ${deactivateArgs.join(' ')}');
+      final deactRes = Process.runSync(sdk, deactivateArgs);
+      if (deactRes.exitCode != 0) {
+        print('Warning: Failed to deactivate ${pkg.name}:');
+        print(deactRes.stderr);
+      }
     }
 
     // 2. Reactivate with the original source and parameters (including --overwrite)
@@ -108,17 +129,41 @@ void main(List<String> arguments) {
       print('Error: Failed to activate ${pkg.name}!');
       print(actRes.stderr);
       print('');
-      print('[ROLLBACK] Attempting to restore ${pkg.name}...');
 
-      // Rollback reactivation attempt
-      final rollbackRes = Process.runSync(sdk, activateArgs);
-      if (rollbackRes.exitCode != 0) {
-        print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
-        print(rollbackRes.stderr);
-        print(
-          '\nTo manually restore, resolve any network/environment issues and run:',
-        );
-        print('  $sdk ${activateArgs.join(' ')}\n');
+      if (!update) {
+        print('[ROLLBACK] Attempting to restore ${pkg.name}...');
+
+        // Rollback reactivation attempt
+        final rollbackRes = Process.runSync(sdk, activateArgs);
+        if (rollbackRes.exitCode != 0) {
+          print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
+          print(rollbackRes.stderr);
+          print(
+            '\nTo manually restore, resolve any network/environment issues and run:',
+          );
+          print('  $sdk ${activateArgs.join(' ')}\n');
+          results.add(
+            PackageReinstallResult(
+              name: pkg.name,
+              initialVersion: pkg.version,
+              status: ReinstallStatus.failed,
+              error: actRes.stderr.toString(),
+            ),
+          );
+        } else {
+          print(
+            '[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.',
+          );
+          results.add(
+            PackageReinstallResult(
+              name: pkg.name,
+              initialVersion: pkg.version,
+              status: ReinstallStatus.rolledBack,
+            ),
+          );
+        }
+      } else {
+        // For updates, the old version is still safely active on error
         results.add(
           PackageReinstallResult(
             name: pkg.name,
@@ -127,24 +172,17 @@ void main(List<String> arguments) {
             error: actRes.stderr.toString(),
           ),
         );
-      } else {
-        print(
-          '[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.',
-        );
-        results.add(
-          PackageReinstallResult(
-            name: pkg.name,
-            initialVersion: pkg.version,
-            status: ReinstallStatus.rolledBack,
-          ),
-        );
       }
     } else {
       final out = actRes.stdout.toString().trim();
       if (out.isNotEmpty) {
         print(out);
       }
-      print('Successfully reactivated and recompiled ${pkg.name}!');
+      if (update) {
+        print('Successfully updated/checked ${pkg.name}!');
+      } else {
+        print('Successfully reactivated and recompiled ${pkg.name}!');
+      }
       results.add(
         PackageReinstallResult(
           name: pkg.name,
@@ -185,9 +223,15 @@ void main(List<String> arguments) {
     final finalVer = finalVersions[name];
     String versionChange;
     if (res.status == ReinstallStatus.failed || finalVer == null) {
-      versionChange = '${res.initialVersion} -> [Deactivated]';
+      if (update) {
+        versionChange = '${res.initialVersion} -> [Failed to Update]';
+      } else {
+        versionChange = '${res.initialVersion} -> [Deactivated]';
+      }
     } else if (res.initialVersion == finalVer) {
-      versionChange = '${res.initialVersion} (recompiled)';
+      versionChange = update
+          ? '${res.initialVersion} (up to date)'
+          : '${res.initialVersion} (recompiled)';
     } else {
       versionChange = '${res.initialVersion} -> $finalVer';
     }

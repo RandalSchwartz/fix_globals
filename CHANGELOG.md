@@ -1,3 +1,10 @@
+## 1.1.0
+
+- Added the `--update` / `-u` CLI flag. When active, it bypasses the package deactivation step to quickly pull updates for active packages and repair bound shims.
+- Updated the dry-run output to only display activation commands when in update mode.
+- Enhanced the end-of-execution summary table to show `(up to date)` or `[Failed to Update]` statuses.
+- Added comprehensive documentation comparing Default Mode vs. Update Mode in the README.
+
 ## 1.0.1
 
 - Explicitly declared supported desktop platforms (Linux, macOS, Windows) in `pubspec.yaml` to exclude non-applicable mobile/web platform tags on pub.dev.
