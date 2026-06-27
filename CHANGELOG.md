@@ -1,3 +1,7 @@
+## 1.2.3
+
+- Implemented an automatic pub.dev/custom registry API version check in update (`--update`) mode. Up-to-date packages are now skipped entirely to prevent redundant recompilations under the new `dart install` system.
+
 ## 1.2.2
 
 - Removed version pinning for hosted and custom-hosted packages so they always install/upgrade to the latest version.

@@ -289,3 +289,25 @@ ProcessResult runCommand(String command, List<String> args) {
     stderrEncoding: utf8,
   );
 }
+
+/// Fetches the latest version of a package from the pub registry.
+Future<String?> fetchLatestVersion(String packageName, String registryUrl) async {
+  final client = HttpClient();
+  try {
+    final uri = Uri.parse('$registryUrl/api/packages/$packageName');
+    final request = await client.getUrl(uri);
+    final response = await request.close();
+    if (response.statusCode == 200) {
+      final content = await response.transform(utf8.decoder).join();
+      final json = jsonDecode(content);
+      if (json is Map) {
+        return json['latest']?['version']?.toString();
+      }
+    }
+  } catch (_) {
+    // Fail silently
+  } finally {
+    client.close();
+  }
+  return null;
+}
