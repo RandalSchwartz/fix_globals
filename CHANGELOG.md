@@ -1,3 +1,7 @@
+## 1.2.2
+
+- Removed version pinning for hosted and custom-hosted packages so they always install/upgrade to the latest version.
+
 ## 1.2.1
 
 - Updated CHANGELOG to document the mandatory migration step (`dart install fix_globals`) for upgrading from pre-1.2.0 versions.

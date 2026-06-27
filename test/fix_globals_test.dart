@@ -16,7 +16,7 @@ void main() {
       final actArgs = pkg.buildActivateArgs();
       expect(
         actArgs,
-        equals(['install', 'build_runner@2.15.0', '--overwrite']),
+        equals(['install', 'build_runner', '--overwrite']),
       );
 
       final actArgsUpdate = pkg.buildActivateArgs(update: true);
@@ -155,7 +155,7 @@ void main() {
         actArgs,
         equals([
           'install',
-          'custom_tool@{hosted: https://onepub.dev, version: 0.5.0}',
+          'custom_tool@{hosted: https://onepub.dev}',
           '--overwrite',
         ]),
       );

@@ -39,13 +39,9 @@ class GlobalPackage {
   String buildDescriptor({bool update = false}) {
     switch (source) {
       case PackageSource.hosted:
-        if (update) return name;
-        return '$name@$version';
+        return name;
       case PackageSource.customHosted:
-        if (update) {
-          return "$name@{hosted: $origin}";
-        }
-        return "$name@{hosted: $origin, version: $version}";
+        return "$name@{hosted: $origin}";
       case PackageSource.path:
         return "$name@{path: $origin}";
       case PackageSource.git:
