@@ -16,7 +16,13 @@ void main() {
       final actArgs = pkg.buildActivateArgs();
       expect(
         actArgs,
-        equals(['pub', 'global', 'activate', 'build_runner', '--overwrite']),
+        equals(['install', 'build_runner@2.15.0', '--overwrite']),
+      );
+
+      final actArgsUpdate = pkg.buildActivateArgs(update: true);
+      expect(
+        actArgsUpdate,
+        equals(['install', 'build_runner', '--overwrite']),
       );
     });
 
@@ -34,12 +40,8 @@ void main() {
       expect(
         actArgs,
         equals([
-          'pub',
-          'global',
-          'activate',
-          '--source',
-          'path',
-          '/Users/merlyn/dev/my_pkg',
+          'install',
+          'my_pkg@{path: /Users/merlyn/dev/my_pkg}',
           '--overwrite',
         ]),
       );
@@ -85,12 +87,8 @@ void main() {
       expect(
         actArgs,
         equals([
-          'pub',
-          'global',
-          'activate',
-          '--source',
-          'git',
-          'git@github.com:org/my_git.git',
+          'install',
+          'my_git@{git: {url: git@github.com:org/my_git.git}}',
           '--overwrite',
         ]),
       );
@@ -112,14 +110,8 @@ void main() {
       expect(
         actArgs,
         equals([
-          'pub',
-          'global',
-          'activate',
-          '--source',
-          'git',
-          'git@github.com:org/my_git.git',
-          '--git-ref',
-          'main',
+          'install',
+          'my_git@{git: {url: git@github.com:org/my_git.git, ref: main}}',
           '--overwrite',
         ]),
       );
@@ -141,14 +133,8 @@ void main() {
       expect(
         actArgs,
         equals([
-          'pub',
-          'global',
-          'activate',
-          '--source',
-          'git',
-          'git@github.com:org/my_git.git',
-          '--git-path',
-          'packages/my_git',
+          'install',
+          'my_git@{git: {url: git@github.com:org/my_git.git, path: packages/my_git}}',
           '--overwrite',
         ]),
       );
@@ -168,14 +154,8 @@ void main() {
       expect(
         actArgs,
         equals([
-          'pub',
-          'global',
-          'activate',
-          '--source',
-          'hosted',
-          '--hosted-url',
-          'https://onepub.dev',
-          'custom_tool',
+          'install',
+          'custom_tool@{hosted: https://onepub.dev, version: 0.5.0}',
           '--overwrite',
         ]),
       );

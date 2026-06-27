@@ -1,3 +1,11 @@
+## 1.2.0
+
+- Completely migrated package management backend from the deprecated `pub global` commands to the new `dart install`, `dart installed`, and `dart uninstall` commands.
+- Implemented an internal OS-specific directory scanner to locate globally installed AOT `app-bundles` and parse `pubspec.lock` files to dynamically reconstruct their original install descriptors.
+- Removed the deprecated `--sdk` / `-s` option, running all commands on the standard `dart` toolchain.
+- Updated the dry-run output and final reinstallation summary layout to reflect the new install commands.
+- Updated documentation and unit tests to verify the new toolchain integration.
+
 ## 1.1.0
 
 - Added the `--update` / `-u` CLI flag. When active, it bypasses the package deactivation step to quickly pull updates for active packages and repair bound shims.

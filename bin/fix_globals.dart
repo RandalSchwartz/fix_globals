@@ -10,18 +10,11 @@ void main(List<String> arguments) {
       negatable: false,
       help: 'Show what would be done without making changes.',
     )
-    ..addOption(
-      'sdk',
-      abbr: 's',
-      allowed: ['dart', 'flutter'],
-      defaultsTo: 'flutter',
-      help: 'SDK to use: "flutter" or "dart".',
-    )
     ..addFlag(
       'update',
       abbr: 'u',
       negatable: false,
-      help: 'Only pull package updates and skip deactivation.',
+      help: 'Only pull package updates and skip uninstallation.',
     )
     ..addFlag(
       'help',
@@ -46,32 +39,21 @@ void main(List<String> arguments) {
   }
 
   final dryRun = argResults['dry-run'] as bool;
-  final sdk = argResults['sdk'] as String;
   final update = argResults['update'] as bool;
 
-  print('Fetching globally activated packages using "$sdk pub global list"...');
-  final listResult = Process.runSync(sdk, ['pub', 'global', 'list']);
-  if (listResult.exitCode != 0) {
-    print('Error running "$sdk pub global list":');
-    print(listResult.stderr);
-    exit(listResult.exitCode);
-  }
+  final installDir = getDartInstallDir();
+  print('Scanning globally installed packages in:');
+  print('  ${installDir.path}');
+  print('');
 
-  final lines = listResult.stdout.toString().split('\n');
-  final packages = <GlobalPackage>[];
-  for (final line in lines) {
-    final pkg = parsePubGlobalLine(line);
-    if (pkg != null) {
-      packages.add(pkg);
-    }
-  }
+  final packages = scanInstalledPackages(installDir);
 
   if (packages.isEmpty) {
-    print('No globally activated packages found for SDK "$sdk".');
+    print('No globally installed Dart CLI packages found.');
     exit(0);
   }
 
-  print('Found ${packages.length} globally activated package(s):');
+  print('Found ${packages.length} globally installed package(s):');
   for (final pkg in packages) {
     print('  - $pkg');
   }
@@ -82,8 +64,8 @@ void main(List<String> arguments) {
     if (update) {
       print('The following commands would be executed to pull package updates:');
       for (final pkg in packages) {
-        final activateArgs = pkg.buildActivateArgs();
-        print('  $sdk ${activateArgs.join(' ')}');
+        final activateArgs = pkg.buildActivateArgs(update: true);
+        print('  dart ${activateArgs.join(' ')}');
       }
     } else {
       print(
@@ -91,9 +73,9 @@ void main(List<String> arguments) {
       );
       for (final pkg in packages) {
         final deactivateArgs = pkg.buildDeactivateArgs();
-        final activateArgs = pkg.buildActivateArgs();
-        print('  $sdk ${deactivateArgs.join(' ')}');
-        print('  $sdk ${activateArgs.join(' ')}');
+        final activateArgs = pkg.buildActivateArgs(update: false);
+        print('  dart ${deactivateArgs.join(' ')}');
+        print('  dart ${activateArgs.join(' ')}');
       }
     }
     print('====================');
@@ -101,7 +83,7 @@ void main(List<String> arguments) {
   }
 
   if (update) {
-    print('Updating and reactivating packages...');
+    print('Updating packages...');
   } else {
     print('Reinstalling and recompiling packages...');
   }
@@ -111,37 +93,38 @@ void main(List<String> arguments) {
     print('Processing ${pkg.name} (${pkg.version})...');
 
     if (!update) {
-      // 1. Deactivate to force recompilation of same-version packages
+      // 1. Uninstall to force recompilation of same-version packages
       final deactivateArgs = pkg.buildDeactivateArgs();
-      print('Running: $sdk ${deactivateArgs.join(' ')}');
-      final deactRes = Process.runSync(sdk, deactivateArgs);
+      print('Running: dart ${deactivateArgs.join(' ')}');
+      final deactRes = Process.runSync('dart', deactivateArgs);
       if (deactRes.exitCode != 0) {
-        print('Warning: Failed to deactivate ${pkg.name}:');
+        print('Warning: Failed to uninstall ${pkg.name}:');
         print(deactRes.stderr);
       }
     }
 
-    // 2. Reactivate with the original source and parameters (including --overwrite)
-    final activateArgs = pkg.buildActivateArgs();
-    print('Running: $sdk ${activateArgs.join(' ')}');
-    final actRes = Process.runSync(sdk, activateArgs);
+    // 2. Install with the original source and parameters (including --overwrite)
+    final activateArgs = pkg.buildActivateArgs(update: update);
+    print('Running: dart ${activateArgs.join(' ')}');
+    final actRes = Process.runSync('dart', activateArgs);
     if (actRes.exitCode != 0) {
-      print('Error: Failed to activate ${pkg.name}!');
+      print('Error: Failed to install ${pkg.name}!');
       print(actRes.stderr);
       print('');
 
       if (!update) {
-        print('[ROLLBACK] Attempting to restore ${pkg.name}...');
+        print('[ROLLBACK] Attempting to restore original version ${pkg.name} (${pkg.version})...');
 
-        // Rollback reactivation attempt
-        final rollbackRes = Process.runSync(sdk, activateArgs);
+        // Rollback reactivation attempt using the original descriptor
+        final rollbackArgs = pkg.buildActivateArgs(update: false);
+        final rollbackRes = Process.runSync('dart', rollbackArgs);
         if (rollbackRes.exitCode != 0) {
           print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
           print(rollbackRes.stderr);
           print(
             '\nTo manually restore, resolve any network/environment issues and run:',
           );
-          print('  $sdk ${activateArgs.join(' ')}\n');
+          print('  dart ${rollbackArgs.join(' ')}\n');
           results.add(
             PackageReinstallResult(
               name: pkg.name,
@@ -181,7 +164,7 @@ void main(List<String> arguments) {
       if (update) {
         print('Successfully updated/checked ${pkg.name}!');
       } else {
-        print('Successfully reactivated and recompiled ${pkg.name}!');
+        print('Successfully reinstalled and recompiled ${pkg.name}!');
       }
       results.add(
         PackageReinstallResult(
@@ -195,17 +178,10 @@ void main(List<String> arguments) {
 
   print('--------------------------------------------------');
   print('Fetching final package versions...');
-  final finalResult = Process.runSync(sdk, ['pub', 'global', 'list']);
-  final Map<String, String> finalVersions = {};
-  if (finalResult.exitCode == 0) {
-    final finalLines = finalResult.stdout.toString().split('\n');
-    for (final line in finalLines) {
-      final pkg = parsePubGlobalLine(line);
-      if (pkg != null) {
-        finalVersions[pkg.name] = pkg.version;
-      }
-    }
-  }
+  final finalPackages = scanInstalledPackages(installDir);
+  final Map<String, String> finalVersions = {
+    for (final pkg in finalPackages) pkg.name: pkg.version
+  };
 
   print('\n==================================================');
   print('            REINSTALLATION SUMMARY');
@@ -226,7 +202,7 @@ void main(List<String> arguments) {
       if (update) {
         versionChange = '${res.initialVersion} -> [Failed to Update]';
       } else {
-        versionChange = '${res.initialVersion} -> [Deactivated]';
+        versionChange = '${res.initialVersion} -> [Uninstalled]';
       }
     } else if (res.initialVersion == finalVer) {
       versionChange = update
@@ -261,7 +237,7 @@ class PackageReinstallResult {
 void printUsage(ArgParser parser) {
   print('Usage: fix-globals [options]');
   print(
-    'Reinstalls (deactivates and reactivates) all globally activated pub packages.',
+    'Reinstalls (uninstalls and reinstalls) all globally installed Dart CLI packages.',
   );
   print('');
   print('Options:');
