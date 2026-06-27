@@ -1,4 +1,11 @@
+## 1.2.1
+
+- Updated CHANGELOG to document the mandatory migration step (`dart install fix_globals`) for upgrading from pre-1.2.0 versions.
+
 ## 1.2.0
+
+> [!IMPORTANT]
+> **Migration Note:** Because the tool has transitioned to the new SDK toolchain, your old version of `fix-globals` installed via `pub global activate` will continue to use the old commands. You **must** manually run `dart install fix_globals` once to install the new version.
 
 - Completely migrated package management backend from the deprecated `pub global` commands to the new `dart install`, `dart installed`, and `dart uninstall` commands.
 - Implemented an internal OS-specific directory scanner to locate globally installed AOT `app-bundles` and parse `pubspec.lock` files to dynamically reconstruct their original install descriptors.
