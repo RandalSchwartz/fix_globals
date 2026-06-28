@@ -39,6 +39,9 @@ class GlobalPackage {
   String buildDescriptor({bool update = false}) {
     switch (source) {
       case PackageSource.hosted:
+        // TODO: If the Dart SDK someday provides a way to detect whether the package
+        // was installed with a pinned version constraint, respect it here instead
+        // of always falling back to installing the latest version.
         return name;
       case PackageSource.customHosted:
         return "$name@{hosted: $origin}";
