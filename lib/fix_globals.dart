@@ -84,16 +84,22 @@ class GlobalPackage {
 }
 
 /// Resolves the platform-specific Dart install directory.
-Directory getDartInstallDir() {
-  final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+Directory getDartInstallDir({Map<String, String>? environment}) {
+  final env = environment ?? Platform.environment;
+  final home = env['HOME'] ?? env['USERPROFILE'];
+  if (home == null || home.isEmpty) {
+    throw StateError(
+      'Unable to determine home directory. Neither HOME nor USERPROFILE environment variable is set.',
+    );
+  }
   if (Platform.isMacOS) {
-    return Directory(p.join(home!, 'Library', 'Application Support', 'Dart', 'install'));
+    return Directory(p.join(home, 'Library', 'Application Support', 'Dart', 'install'));
   } else if (Platform.isWindows) {
-    final localAppData = Platform.environment['LOCALAPPDATA'] ?? p.join(home!, 'AppData', 'Local');
+    final localAppData = env['LOCALAPPDATA'] ?? p.join(home, 'AppData', 'Local');
     return Directory(p.join(localAppData, 'Dart', 'install'));
   } else {
     // Linux
-    final xdgData = Platform.environment['XDG_DATA_HOME'] ?? p.join(home!, '.local', 'share');
+    final xdgData = env['XDG_DATA_HOME'] ?? p.join(home, '.local', 'share');
     return Directory(p.join(xdgData, 'dart', 'install'));
   }
 }
@@ -132,6 +138,15 @@ GlobalPackage? parsePackageFromDir(Directory packageDir, String name) {
   final lockFile = lockFiles.first;
   try {
     final content = lockFile.readAsStringSync();
+    return parsePackageFromYaml(content, name);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Parses the YAML content of a pubspec.lock file for package [name].
+GlobalPackage? parsePackageFromYaml(String content, String name) {
+  try {
     final doc = loadYaml(content);
     if (doc is YamlMap && doc.containsKey('packages')) {
       final pkgs = doc['packages'];
@@ -187,22 +202,44 @@ GlobalPackage? parsePackageFromDir(Directory packageDir, String name) {
   return null;
 }
 
-void _findLockFiles(Directory dir, List<File> results) {
-  for (final entity in dir.listSync()) {
-    if (entity is Directory) {
-      _findLockFiles(entity, results);
-    } else if (entity is File && p.basename(entity.path) == 'pubspec.lock') {
-      results.add(entity);
+void _findLockFiles(Directory dir, List<File> results, [Set<String>? visited]) {
+  visited ??= <String>{};
+  String canonicalPath;
+  try {
+    canonicalPath = dir.resolveSymbolicLinksSync();
+  } catch (_) {
+    canonicalPath = dir.path;
+  }
+  if (!visited.add(canonicalPath)) {
+    return; // Prevent infinite loop on circular symlinks
+  }
+  try {
+    for (final entity in dir.listSync(followLinks: false)) {
+      if (entity is Directory) {
+        _findLockFiles(entity, results, visited);
+      } else if (entity is File && p.basename(entity.path) == 'pubspec.lock') {
+        results.add(entity);
+      }
     }
+  } catch (_) {
+    // Ignore unreadable subdirectories
   }
 }
+
+// Top-level cached regular expressions for string parsing
+final _spaceRegExp = RegExp(r'\s+');
+final _pathRegExp = RegExp(r'''^at path\s+["']?([^"']+)["']?$''');
+final _hostedRegExp = RegExp(r'''^at hosted\s+["']?([^"']+)["']?$''');
+final _gitRegExp = RegExp(r'''^from git\s+["']?([^"']+)["']?(.*)$''');
+final _refRegExp = RegExp(r'''(?:at\s+)?ref\s+["']?([^"']+)["']?''');
+final _gitPathRegExp = RegExp(r'''(?:at\s+)?path\s+["']?([^"']+)["']?''');
 
 /// Parses a single line from traditional `pub global list` output (useful for tests and backward compatibility).
 GlobalPackage? parsePubGlobalLine(String line) {
   final trimmed = line.trim();
   if (trimmed.isEmpty) return null;
 
-  final parts = trimmed.split(RegExp(r'\s+'));
+  final parts = trimmed.split(_spaceRegExp);
   if (parts.length < 2) return null;
 
   final name = parts[0];
@@ -212,9 +249,7 @@ GlobalPackage? parsePubGlobalLine(String line) {
     final remaining = parts.sublist(2).join(' ');
 
     // 1. Path Match
-    final pathMatch = RegExp(
-      r'''^at path\s+["']?([^"']+)["']?$''',
-    ).firstMatch(remaining);
+    final pathMatch = _pathRegExp.firstMatch(remaining);
     if (pathMatch != null) {
       return GlobalPackage(
         name: name,
@@ -225,9 +260,7 @@ GlobalPackage? parsePubGlobalLine(String line) {
     }
 
     // 2. Custom Hosted Match
-    final hostedMatch = RegExp(
-      r'''^at hosted\s+["']?([^"']+)["']?$''',
-    ).firstMatch(remaining);
+    final hostedMatch = _hostedRegExp.firstMatch(remaining);
     if (hostedMatch != null) {
       return GlobalPackage(
         name: name,
@@ -238,9 +271,7 @@ GlobalPackage? parsePubGlobalLine(String line) {
     }
 
     // 3. Git Match (could contain optional ref or sub-path)
-    final gitMatch = RegExp(
-      r'''^from git\s+["']?([^"']+)["']?(.*)$''',
-    ).firstMatch(remaining);
+    final gitMatch = _gitRegExp.firstMatch(remaining);
     if (gitMatch != null) {
       final url = gitMatch.group(1)!;
       final extra = gitMatch.group(2)?.trim() ?? '';
@@ -249,16 +280,12 @@ GlobalPackage? parsePubGlobalLine(String line) {
       String? subPath;
 
       if (extra.isNotEmpty) {
-        final refMatch = RegExp(
-          r'''(?:at\s+)?ref\s+["']?([^"']+)["']?''',
-        ).firstMatch(extra);
+        final refMatch = _refRegExp.firstMatch(extra);
         if (refMatch != null) {
           ref = refMatch.group(1);
         }
 
-        final pathInGitMatch = RegExp(
-          r'''(?:at\s+)?path\s+["']?([^"']+)["']?''',
-        ).firstMatch(extra);
+        final pathInGitMatch = _gitPathRegExp.firstMatch(extra);
         if (pathInGitMatch != null) {
           subPath = pathInGitMatch.group(1);
         }
@@ -283,25 +310,20 @@ GlobalPackage? parsePubGlobalLine(String line) {
   );
 }
 
-/// Executes a shell command synchronously and returns the output/exit code.
-ProcessResult runCommand(String command, List<String> args) {
-  return Process.runSync(
-    command,
-    args,
-    stdoutEncoding: utf8,
-    stderrEncoding: utf8,
-  );
-}
-
 /// Fetches the latest version of a package from the pub registry.
-Future<String?> fetchLatestVersion(String packageName, String registryUrl) async {
-  final client = HttpClient();
+Future<String?> fetchLatestVersion(
+  String packageName,
+  String registryUrl, {
+  HttpClient? client,
+  Duration timeout = const Duration(seconds: 10),
+}) async {
+  final httpClient = client ?? HttpClient();
   try {
     final uri = Uri.parse('$registryUrl/api/packages/$packageName');
-    final request = await client.getUrl(uri);
-    final response = await request.close();
+    final request = await httpClient.getUrl(uri).timeout(timeout);
+    final response = await request.close().timeout(timeout);
     if (response.statusCode == 200) {
-      final content = await response.transform(utf8.decoder).join();
+      final content = await response.transform(utf8.decoder).join().timeout(timeout);
       final json = jsonDecode(content);
       if (json is Map) {
         return json['latest']?['version']?.toString();
@@ -310,7 +332,9 @@ Future<String?> fetchLatestVersion(String packageName, String registryUrl) async
   } catch (_) {
     // Fail silently
   } finally {
-    client.close();
+    if (client == null) {
+      httpClient.close();
+    }
   }
   return null;
 }
