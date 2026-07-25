@@ -1,3 +1,13 @@
+## 1.3.0
+
+- Comprehensive refactoring and security hardening:
+  - Switched CLI execution backend to non-blocking asynchronous `Process.run`.
+  - Added protection against circular symlink recursion in lockfile directory scanning (`followLinks: false`).
+  - Added 10-second request timeouts to pub registry version checks.
+  - Cached compiled regular expressions to optimize line parsing performance.
+  - Hardened installation path resolution against missing home directory environment variables.
+- Expanded unit test suite from 8 to 17 tests covering model helpers, environment guards, lockfiles, symlinks, and HTTP server mocks.
+
 ## 1.2.3
 
 - Implemented an automatic pub.dev/custom registry API version check in update (`--update`) mode. Up-to-date packages are now skipped entirely to prevent redundant recompilations under the new `dart install` system.
