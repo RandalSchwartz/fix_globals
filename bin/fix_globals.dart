@@ -60,28 +60,42 @@ Future<void> main(List<String> arguments) async {
   print('');
 
   if (dryRun) {
-    print('=== DRY RUN MODE ===');
-    if (update) {
-      print('The following commands would be executed to pull package updates:');
-      for (final pkg in packages) {
-        final activateArgs = pkg.buildActivateArgs(update: true);
-        print('  dart ${activateArgs.join(' ')}');
-      }
-    } else {
-      print(
-        'The following commands would be executed to force complete recompilation:',
-      );
-      for (final pkg in packages) {
-        final deactivateArgs = pkg.buildDeactivateArgs();
-        final activateArgs = pkg.buildActivateArgs(update: false);
-        print('  dart ${deactivateArgs.join(' ')}');
-        print('  dart ${activateArgs.join(' ')}');
-      }
-    }
-    print('====================');
+    printDryRun(packages, update: update);
     exit(0);
   }
 
+  final results = await executePackageReinstalls(packages, update: update);
+  printSummaryTable(results, installDir, update: update);
+}
+
+void printDryRun(List<GlobalPackage> packages, {required bool update}) {
+  print('=== DRY RUN MODE ===');
+  if (update) {
+    print('The following commands would be executed to pull package updates:');
+    for (final pkg in packages) {
+      final activateArgs = pkg.buildActivateArgs(update: true);
+      print('  dart ${activateArgs.join(' ')}');
+    }
+  } else {
+    print(
+      'The following commands would be executed to force complete recompilation:',
+    );
+    for (final pkg in packages) {
+      final deactivateArgs = pkg.buildDeactivateArgs();
+      final activateArgs = pkg.buildActivateArgs(update: false);
+      print('  dart ${deactivateArgs.join(' ')}');
+      print('  dart ${activateArgs.join(' ')}');
+    }
+  }
+  print('====================');
+}
+
+Future<List<PackageReinstallResult>> executePackageReinstalls(
+  List<GlobalPackage> packages, {
+  required bool update,
+  Future<ProcessResult> Function(String executable, List<String> arguments)? processRunner,
+}) async {
+  final run = processRunner ?? (exec, args) => Process.run(exec, args);
   if (update) {
     print('Updating packages...');
   } else {
@@ -93,13 +107,18 @@ Future<void> main(List<String> arguments) async {
     print('Processing ${pkg.name} (${pkg.version})...');
 
     bool shouldInstall = true;
-    if (update && (pkg.source == PackageSource.hosted || pkg.source == PackageSource.customHosted)) {
-      final registryUrl = pkg.source == PackageSource.hosted ? 'https://pub.dev' : pkg.origin!;
+    if (update &&
+        (pkg.source == PackageSource.hosted ||
+            pkg.source == PackageSource.customHosted)) {
+      final registryUrl =
+          pkg.source == PackageSource.hosted ? 'https://pub.dev' : pkg.origin!;
       print('Checking for updates from $registryUrl...');
       final latest = await fetchLatestVersion(pkg.name, registryUrl);
       if (latest != null) {
         if (latest == pkg.version) {
-          print('  ${pkg.name} is already up to date (${pkg.version}). Skipping.');
+          print(
+            '  ${pkg.name} is already up to date (${pkg.version}). Skipping.',
+          );
           shouldInstall = false;
           results.add(
             PackageReinstallResult(
@@ -119,7 +138,7 @@ Future<void> main(List<String> arguments) async {
         // 1. Uninstall to force recompilation of same-version packages
         final deactivateArgs = pkg.buildDeactivateArgs();
         print('Running: dart ${deactivateArgs.join(' ')}');
-        final deactRes = Process.runSync('dart', deactivateArgs);
+        final deactRes = await run('dart', deactivateArgs);
         if (deactRes.exitCode != 0) {
           print('Warning: Failed to uninstall ${pkg.name}:');
           print(deactRes.stderr);
@@ -129,20 +148,24 @@ Future<void> main(List<String> arguments) async {
       // 2. Install with the original source and parameters (including --overwrite)
       final activateArgs = pkg.buildActivateArgs(update: update);
       print('Running: dart ${activateArgs.join(' ')}');
-      final actRes = Process.runSync('dart', activateArgs);
+      final actRes = await run('dart', activateArgs);
       if (actRes.exitCode != 0) {
         print('Error: Failed to install ${pkg.name}!');
         print(actRes.stderr);
         print('');
 
         if (!update) {
-          print('[ROLLBACK] Attempting to restore original version ${pkg.name} (${pkg.version})...');
+          print(
+            '[ROLLBACK] Attempting to restore original version ${pkg.name} (${pkg.version})...',
+          );
 
           // Rollback reactivation attempt using the original descriptor
           final rollbackArgs = pkg.buildActivateArgs(update: false);
-          final rollbackRes = Process.runSync('dart', rollbackArgs);
+          final rollbackRes = await run('dart', rollbackArgs);
           if (rollbackRes.exitCode != 0) {
-            print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
+            print(
+              '[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.',
+            );
             print(rollbackRes.stderr);
             print(
               '\nTo manually restore, resolve any network/environment issues and run:',
@@ -199,7 +222,14 @@ Future<void> main(List<String> arguments) async {
       }
     }
   }
+  return results;
+}
 
+void printSummaryTable(
+  List<PackageReinstallResult> results,
+  Directory installDir, {
+  required bool update,
+}) {
   print('--------------------------------------------------');
   print('Fetching final package versions...');
   final finalPackages = scanInstalledPackages(installDir);
