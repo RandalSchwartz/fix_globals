@@ -67,16 +67,15 @@ void main() {
     });
 
     test('throws StateError when HOME and USERPROFILE are missing', () {
-      expect(
-        () => getDartInstallDir(environment: {}),
-        throwsStateError,
-      );
+      expect(() => getDartInstallDir(environment: {}), throwsStateError);
     });
   });
 
   group('Lockfile & Directory Scanning tests', () {
-    test('parsePackageFromYaml parses hosted, path, git, and customHosted packages', () {
-      const hostedYaml = '''
+    test(
+      'parsePackageFromYaml parses hosted, path, git, and customHosted packages',
+      () {
+        const hostedYaml = '''
 packages:
   foo:
     dependency: "direct main"
@@ -86,13 +85,13 @@ packages:
     source: hosted
     version: "1.2.3"
 ''';
-      final pkg1 = parsePackageFromYaml(hostedYaml, 'foo');
-      expect(pkg1, isNotNull);
-      expect(pkg1!.name, equals('foo'));
-      expect(pkg1.version, equals('1.2.3'));
-      expect(pkg1.source, equals(PackageSource.hosted));
+        final pkg1 = parsePackageFromYaml(hostedYaml, 'foo');
+        expect(pkg1, isNotNull);
+        expect(pkg1!.name, equals('foo'));
+        expect(pkg1.version, equals('1.2.3'));
+        expect(pkg1.source, equals(PackageSource.hosted));
 
-      const pathYaml = '''
+        const pathYaml = '''
 packages:
   bar:
     description:
@@ -100,12 +99,12 @@ packages:
     source: path
     version: "0.9.0"
 ''';
-      final pkg2 = parsePackageFromYaml(pathYaml, 'bar');
-      expect(pkg2, isNotNull);
-      expect(pkg2!.source, equals(PackageSource.path));
-      expect(pkg2.origin, equals('/local/bar'));
+        final pkg2 = parsePackageFromYaml(pathYaml, 'bar');
+        expect(pkg2, isNotNull);
+        expect(pkg2!.source, equals(PackageSource.path));
+        expect(pkg2.origin, equals('/local/bar'));
 
-      const gitYaml = '''
+        const gitYaml = '''
 packages:
   baz:
     description:
@@ -115,14 +114,14 @@ packages:
     source: git
     version: "2.1.0"
 ''';
-      final pkg3 = parsePackageFromYaml(gitYaml, 'baz');
-      expect(pkg3, isNotNull);
-      expect(pkg3!.source, equals(PackageSource.git));
-      expect(pkg3.origin, equals('https://github.com/test/baz.git'));
-      expect(pkg3.gitRef, equals('feature'));
-      expect(pkg3.gitPath, equals('sub/baz'));
+        final pkg3 = parsePackageFromYaml(gitYaml, 'baz');
+        expect(pkg3, isNotNull);
+        expect(pkg3!.source, equals(PackageSource.git));
+        expect(pkg3.origin, equals('https://github.com/test/baz.git'));
+        expect(pkg3.gitRef, equals('feature'));
+        expect(pkg3.gitPath, equals('sub/baz'));
 
-      const customYaml = '''
+        const customYaml = '''
 packages:
   qux:
     description:
@@ -131,21 +130,26 @@ packages:
     source: hosted
     version: "5.0.0"
 ''';
-      final pkg4 = parsePackageFromYaml(customYaml, 'qux');
-      expect(pkg4, isNotNull);
-      expect(pkg4!.source, equals(PackageSource.customHosted));
-      expect(pkg4.origin, equals('https://custom.pub.server'));
-    });
+        final pkg4 = parsePackageFromYaml(customYaml, 'qux');
+        expect(pkg4, isNotNull);
+        expect(pkg4!.source, equals(PackageSource.customHosted));
+        expect(pkg4.origin, equals('https://custom.pub.server'));
+      },
+    );
 
-    test('scanInstalledPackages reads packages from app-bundles directory', () async {
-      final tempDir = await Directory.systemTemp.createTemp('fix_globals_test_');
-      try {
-        final appBundles = Directory(p.join(tempDir.path, 'app-bundles'));
-        final pkgDir = Directory(p.join(appBundles.path, 'my_app'));
-        await pkgDir.create(recursive: true);
+    test(
+      'scanInstalledPackages reads packages from app-bundles directory',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fix_globals_test_',
+        );
+        try {
+          final appBundles = Directory(p.join(tempDir.path, 'app-bundles'));
+          final pkgDir = Directory(p.join(appBundles.path, 'my_app'));
+          await pkgDir.create(recursive: true);
 
-        final lockFile = File(p.join(pkgDir.path, 'pubspec.lock'));
-        await lockFile.writeAsString('''
+          final lockFile = File(p.join(pkgDir.path, 'pubspec.lock'));
+          await lockFile.writeAsString('''
 packages:
   my_app:
     description:
@@ -155,20 +159,24 @@ packages:
     version: "1.0.0"
 ''');
 
-        final installed = scanInstalledPackages(tempDir);
-        expect(installed.length, equals(1));
-        expect(installed.first.name, equals('my_app'));
-        expect(installed.first.version, equals('1.0.0'));
-      } finally {
-        await tempDir.delete(recursive: true);
-      }
-    });
+          final installed = scanInstalledPackages(tempDir);
+          expect(installed.length, equals(1));
+          expect(installed.first.name, equals('my_app'));
+          expect(installed.first.version, equals('1.0.0'));
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
 
     test('handles cyclic symlinks without infinite recursion', () async {
-      final tempDir = await Directory.systemTemp.createTemp('fix_globals_symlink_');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'fix_globals_symlink_',
+      );
       try {
         final subDirA = Directory(p.join(tempDir.path, 'dirA'))..createSync();
-        final subDirB = Directory(p.join(tempDir.path, 'dirA', 'dirB'))..createSync();
+        final subDirB = Directory(p.join(tempDir.path, 'dirA', 'dirB'))
+          ..createSync();
 
         // Create circular symlink: dirA/dirB/linkToA -> dirA
         final link = Link(p.join(subDirB.path, 'linkToA'));
@@ -194,9 +202,11 @@ packages:
         if (request.uri.path == '/api/packages/my_package') {
           request.response
             ..headers.contentType = ContentType.json
-            ..write(jsonEncode({
-              'latest': {'version': '2.5.0'}
-            }))
+            ..write(
+              jsonEncode({
+                'latest': {'version': '2.5.0'},
+              }),
+            )
             ..close();
         } else {
           request.response
@@ -246,16 +256,10 @@ packages:
       expect(pkg.origin, isNull);
 
       final actArgs = pkg.buildActivateArgs();
-      expect(
-        actArgs,
-        equals(['install', 'build_runner', '--overwrite']),
-      );
+      expect(actArgs, equals(['install', 'build_runner', '--overwrite']));
 
       final actArgsUpdate = pkg.buildActivateArgs(update: true);
-      expect(
-        actArgsUpdate,
-        equals(['install', 'build_runner', '--overwrite']),
-      );
+      expect(actArgsUpdate, equals(['install', 'build_runner', '--overwrite']));
     });
 
     test('Parses path packages correctly', () {
