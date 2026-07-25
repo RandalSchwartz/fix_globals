@@ -1,3 +1,8 @@
+## 1.3.1
+
+- Lowered minimum Dart SDK constraint to `^3.11.0` for broader compatibility across Dart 3.11+ environments.
+- Code formatting and style cleanups across `bin/`, `lib/`, and `test/`.
+
 ## 1.3.0
 
 - Comprehensive refactoring and security hardening:
