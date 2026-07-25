@@ -93,7 +93,8 @@ void printDryRun(List<GlobalPackage> packages, {required bool update}) {
 Future<List<PackageReinstallResult>> executePackageReinstalls(
   List<GlobalPackage> packages, {
   required bool update,
-  Future<ProcessResult> Function(String executable, List<String> arguments)? processRunner,
+  Future<ProcessResult> Function(String executable, List<String> arguments)?
+  processRunner,
 }) async {
   final run = processRunner ?? (exec, args) => Process.run(exec, args);
   if (update) {
@@ -110,8 +111,9 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
     if (update &&
         (pkg.source == PackageSource.hosted ||
             pkg.source == PackageSource.customHosted)) {
-      final registryUrl =
-          pkg.source == PackageSource.hosted ? 'https://pub.dev' : pkg.origin!;
+      final registryUrl = pkg.source == PackageSource.hosted
+          ? 'https://pub.dev'
+          : pkg.origin!;
       print('Checking for updates from $registryUrl...');
       final latest = await fetchLatestVersion(pkg.name, registryUrl);
       if (latest != null) {
@@ -234,7 +236,7 @@ void printSummaryTable(
   print('Fetching final package versions...');
   final finalPackages = scanInstalledPackages(installDir);
   final Map<String, String> finalVersions = {
-    for (final pkg in finalPackages) pkg.name: pkg.version
+    for (final pkg in finalPackages) pkg.name: pkg.version,
   };
 
   print('\n==================================================');

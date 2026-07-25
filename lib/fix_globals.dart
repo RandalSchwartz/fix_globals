@@ -56,7 +56,9 @@ class GlobalPackage {
         if (gitPath != null) {
           gitMap['path'] = gitPath!;
         }
-        final mapStr = gitMap.entries.map((e) => "${e.key}: ${e.value}").join(', ');
+        final mapStr = gitMap.entries
+            .map((e) => "${e.key}: ${e.value}")
+            .join(', ');
         return "$name@{git: {$mapStr}}";
     }
   }
@@ -93,9 +95,12 @@ Directory getDartInstallDir({Map<String, String>? environment}) {
     );
   }
   if (Platform.isMacOS) {
-    return Directory(p.join(home, 'Library', 'Application Support', 'Dart', 'install'));
+    return Directory(
+      p.join(home, 'Library', 'Application Support', 'Dart', 'install'),
+    );
   } else if (Platform.isWindows) {
-    final localAppData = env['LOCALAPPDATA'] ?? p.join(home, 'AppData', 'Local');
+    final localAppData =
+        env['LOCALAPPDATA'] ?? p.join(home, 'AppData', 'Local');
     return Directory(p.join(localAppData, 'Dart', 'install'));
   } else {
     // Linux
@@ -179,7 +184,9 @@ GlobalPackage? parsePackageFromYaml(String content, String name) {
             );
           } else if (sourceStr == 'hosted' && desc is YamlMap) {
             final url = desc['url']?.toString();
-            if (url != null && url != 'https://pub.dev' && url != 'https://pub.dartlang.org') {
+            if (url != null &&
+                url != 'https://pub.dev' &&
+                url != 'https://pub.dartlang.org') {
               return GlobalPackage(
                 name: name,
                 version: version,
@@ -323,7 +330,10 @@ Future<String?> fetchLatestVersion(
     final request = await httpClient.getUrl(uri).timeout(timeout);
     final response = await request.close().timeout(timeout);
     if (response.statusCode == 200) {
-      final content = await response.transform(utf8.decoder).join().timeout(timeout);
+      final content = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(timeout);
       final json = jsonDecode(content);
       if (json is Map) {
         return json['latest']?['version']?.toString();
