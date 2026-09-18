@@ -169,6 +169,93 @@ packages:
       },
     );
 
+    test('scanInstalledPackages returns empty list when app-bundles does not exist', () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'fix_globals_missing_app_bundles_',
+      );
+      try {
+        final installed = scanInstalledPackages(tempDir);
+        expect(installed, isEmpty);
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('scanInstalledPackages returns empty list when installDir does not exist', () {
+      final nonExistentDir = Directory(
+        p.join(Directory.systemTemp.path, 'non_existent_dart_install_dir_12345'),
+      );
+      final installed = scanInstalledPackages(nonExistentDir);
+      expect(installed, isEmpty);
+    });
+
+    test('parsePackageFromYaml returns null safely on malformed or invalid YAML', () {
+      // Syntax error in YAML
+      expect(parsePackageFromYaml(':::invalid yaml:::', 'foo'), isNull);
+      expect(parsePackageFromYaml('[unclosed bracket', 'foo'), isNull);
+
+      // Scalar / non-map root YAML documents
+      expect(parsePackageFromYaml('just a plain string', 'foo'), isNull);
+      expect(parsePackageFromYaml('12345', 'foo'), isNull);
+      expect(parsePackageFromYaml('', 'foo'), isNull);
+      expect(parsePackageFromYaml('   \n\n  ', 'foo'), isNull);
+
+      // Map without 'packages' key
+      expect(parsePackageFromYaml('other_key: 42', 'foo'), isNull);
+
+      // 'packages' is not a Map
+      expect(parsePackageFromYaml('packages: "string_not_map"', 'foo'), isNull);
+      expect(parsePackageFromYaml('packages: [1, 2, 3]', 'foo'), isNull);
+
+      // Target package is missing
+      expect(
+        parsePackageFromYaml('packages:\n  bar:\n    version: "1.0.0"', 'foo'),
+        isNull,
+      );
+
+      // Target package entry is not a map
+      expect(
+        parsePackageFromYaml('packages:\n  foo: "scalar_entry"', 'foo'),
+        isNull,
+      );
+
+      // Target package entry missing source or invalid source
+      expect(
+        parsePackageFromYaml('packages:\n  foo:\n    version: "1.0.0"', 'foo'),
+        isNull,
+      );
+    });
+
+    test('parsePackageFromDir handles non-existent or empty directory', () {
+      final nonExistentDir = Directory(
+        p.join(Directory.systemTemp.path, 'non_existent_pkg_dir_12345'),
+      );
+      expect(parsePackageFromDir(nonExistentDir, 'foo'), isNull);
+    });
+
+    test(
+      'parsePackageFromDir handles unreadable lock files or permission errors',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fix_globals_unreadable_',
+        );
+        try {
+          final lockFile = File(p.join(tempDir.path, 'pubspec.lock'));
+          await lockFile.writeAsString('packages:\n  foo:\n    source: hosted');
+
+          // Remove read permissions to test read exception handling
+          await Process.run('chmod', ['000', lockFile.path]);
+
+          final pkg = parsePackageFromDir(tempDir, 'foo');
+          expect(pkg, isNull);
+        } finally {
+          await Process.run('chmod', ['644', p.join(tempDir.path, 'pubspec.lock')]);
+          await tempDir.delete(recursive: true);
+        }
+      },
+      skip: Platform.isWindows ? 'chmod permission test is POSIX only' : null,
+    );
+
     test('handles cyclic symlinks without infinite recursion', () async {
       final tempDir = await Directory.systemTemp.createTemp(
         'fix_globals_symlink_',
