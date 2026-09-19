@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:fix_globals/fix_globals.dart';
 
-Future<void> main(List<String> arguments) async {
-  final parser = ArgParser()
+ArgParser buildArgParser() {
+  return ArgParser()
     ..addFlag(
       'dry-run',
       abbr: 'n',
@@ -22,6 +22,10 @@ Future<void> main(List<String> arguments) async {
       negatable: false,
       help: 'Show this help message.',
     );
+}
+
+Future<void> main(List<String> arguments) async {
+  final parser = buildArgParser();
 
   ArgResults argResults;
   try {
@@ -95,8 +99,11 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
   required bool update,
   Future<ProcessResult> Function(String executable, List<String> arguments)?
   processRunner,
+  Future<String?> Function(String packageName, String registryUrl)?
+  latestVersionFetcher,
 }) async {
   final run = processRunner ?? (exec, args) => Process.run(exec, args);
+  final fetchLatest = latestVersionFetcher ?? fetchLatestVersion;
   if (update) {
     print('Updating packages...');
   } else {
@@ -115,7 +122,7 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
           ? 'https://pub.dev'
           : pkg.origin!;
       print('Checking for updates from $registryUrl...');
-      final latest = await fetchLatestVersion(pkg.name, registryUrl);
+      final latest = await fetchLatest(pkg.name, registryUrl);
       if (latest != null) {
         if (latest == pkg.version) {
           print(
