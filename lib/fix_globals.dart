@@ -153,60 +153,60 @@ GlobalPackage? parsePackageFromDir(Directory packageDir, String name) {
 GlobalPackage? parsePackageFromYaml(String content, String name) {
   try {
     final doc = loadYaml(content);
-    if (doc is YamlMap && doc.containsKey('packages')) {
-      final pkgs = doc['packages'];
-      if (pkgs is YamlMap && pkgs.containsKey(name)) {
-        final entry = pkgs[name];
-        if (entry is YamlMap) {
-          final version = entry['version']?.toString() ?? '0.0.0';
-          final sourceStr = entry['source']?.toString();
-          final desc = entry['description'];
+    if (doc is! YamlMap) return null;
 
-          if (sourceStr == 'path' && desc is YamlMap) {
-            final path = desc['path']?.toString();
-            return GlobalPackage(
-              name: name,
-              version: version,
-              source: PackageSource.path,
-              origin: path,
-            );
-          } else if (sourceStr == 'git' && desc is YamlMap) {
-            final url = desc['url']?.toString();
-            final ref = desc['ref']?.toString();
-            final path = desc['path']?.toString();
-            return GlobalPackage(
-              name: name,
-              version: version,
-              source: PackageSource.git,
-              origin: url,
-              gitRef: ref,
-              gitPath: path,
-            );
-          } else if (sourceStr == 'hosted' && desc is YamlMap) {
-            final url = desc['url']?.toString();
-            if (url != null &&
-                url != 'https://pub.dev' &&
-                url != 'https://pub.dartlang.org') {
-              return GlobalPackage(
-                name: name,
-                version: version,
-                source: PackageSource.customHosted,
-                origin: url,
-              );
-            }
-            return GlobalPackage(
-              name: name,
-              version: version,
-              source: PackageSource.hosted,
-            );
-          }
-        }
-      }
-    }
+    final pkgs = doc['packages'];
+    if (pkgs is! YamlMap) return null;
+
+    final entry = pkgs[name];
+    if (entry is! YamlMap) return null;
+
+    final version = entry['version']?.toString() ?? '0.0.0';
+    final sourceStr = entry['source']?.toString();
+    final desc = entry['description'];
+
+    if (desc is! YamlMap) return null;
+
+    return switch (sourceStr) {
+      'path' => GlobalPackage(
+        name: name,
+        version: version,
+        source: PackageSource.path,
+        origin: desc['path']?.toString(),
+      ),
+      'git' => GlobalPackage(
+        name: name,
+        version: version,
+        source: PackageSource.git,
+        origin: desc['url']?.toString(),
+        gitRef: desc['ref']?.toString(),
+        gitPath: desc['path']?.toString(),
+      ),
+      'hosted' => _parseHostedPackage(name, version, desc),
+      _ => null,
+    };
   } catch (_) {
-    // Ignore error and return null
+    return null;
   }
-  return null;
+}
+
+GlobalPackage _parseHostedPackage(String name, String version, YamlMap desc) {
+  final url = desc['url']?.toString();
+  if (url != null &&
+      url != 'https://pub.dev' &&
+      url != 'https://pub.dartlang.org') {
+    return GlobalPackage(
+      name: name,
+      version: version,
+      source: PackageSource.customHosted,
+      origin: url,
+    );
+  }
+  return GlobalPackage(
+    name: name,
+    version: version,
+    source: PackageSource.hosted,
+  );
 }
 
 void _findLockFiles(Directory dir, List<File> results, [Set<String>? visited]) {
@@ -252,68 +252,78 @@ GlobalPackage? parsePubGlobalLine(String line) {
   final name = parts[0];
   final version = parts[1];
 
-  if (parts.length > 2) {
-    final remaining = parts.sublist(2).join(' ');
+  if (parts.length == 2) {
+    return GlobalPackage(
+      name: name,
+      version: version,
+      source: PackageSource.hosted,
+    );
+  }
 
-    // 1. Path Match
-    final pathMatch = _pathRegExp.firstMatch(remaining);
-    if (pathMatch != null) {
-      return GlobalPackage(
-        name: name,
-        version: version,
-        source: PackageSource.path,
-        origin: pathMatch.group(1),
-      );
+  final remaining = parts.sublist(2).join(' ');
+  return _parsePubGlobalRemaining(name, version, remaining) ??
+      GlobalPackage(name: name, version: version, source: PackageSource.hosted);
+}
+
+GlobalPackage? _parsePubGlobalRemaining(
+  String name,
+  String version,
+  String remaining,
+) {
+  final pathMatch = _pathRegExp.firstMatch(remaining);
+  if (pathMatch != null) {
+    return GlobalPackage(
+      name: name,
+      version: version,
+      source: PackageSource.path,
+      origin: pathMatch.group(1),
+    );
+  }
+
+  final hostedMatch = _hostedRegExp.firstMatch(remaining);
+  if (hostedMatch != null) {
+    return GlobalPackage(
+      name: name,
+      version: version,
+      source: PackageSource.customHosted,
+      origin: hostedMatch.group(1),
+    );
+  }
+
+  final gitMatch = _gitRegExp.firstMatch(remaining);
+  if (gitMatch != null) {
+    return _parseGitPackage(name, version, gitMatch);
+  }
+
+  return null;
+}
+
+GlobalPackage _parseGitPackage(String name, String version, Match gitMatch) {
+  final url = gitMatch.group(1)!;
+  final extra = gitMatch.group(2)?.trim() ?? '';
+
+  String? ref;
+  String? subPath;
+
+  if (extra.isNotEmpty) {
+    final refMatch = _refRegExp.firstMatch(extra);
+    if (refMatch != null) {
+      ref = refMatch.group(1);
     }
 
-    // 2. Custom Hosted Match
-    final hostedMatch = _hostedRegExp.firstMatch(remaining);
-    if (hostedMatch != null) {
-      return GlobalPackage(
-        name: name,
-        version: version,
-        source: PackageSource.customHosted,
-        origin: hostedMatch.group(1),
-      );
-    }
-
-    // 3. Git Match (could contain optional ref or sub-path)
-    final gitMatch = _gitRegExp.firstMatch(remaining);
-    if (gitMatch != null) {
-      final url = gitMatch.group(1)!;
-      final extra = gitMatch.group(2)?.trim() ?? '';
-
-      String? ref;
-      String? subPath;
-
-      if (extra.isNotEmpty) {
-        final refMatch = _refRegExp.firstMatch(extra);
-        if (refMatch != null) {
-          ref = refMatch.group(1);
-        }
-
-        final pathInGitMatch = _gitPathRegExp.firstMatch(extra);
-        if (pathInGitMatch != null) {
-          subPath = pathInGitMatch.group(1);
-        }
-      }
-
-      return GlobalPackage(
-        name: name,
-        version: version,
-        source: PackageSource.git,
-        origin: url,
-        gitRef: ref,
-        gitPath: subPath,
-      );
+    final pathInGitMatch = _gitPathRegExp.firstMatch(extra);
+    if (pathInGitMatch != null) {
+      subPath = pathInGitMatch.group(1);
     }
   }
 
-  // Default to hosted on pub.dev
   return GlobalPackage(
     name: name,
     version: version,
-    source: PackageSource.hosted,
+    source: PackageSource.git,
+    origin: url,
+    gitRef: ref,
+    gitPath: subPath,
   );
 }
 
