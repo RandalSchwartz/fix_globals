@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
@@ -328,15 +329,25 @@ GlobalPackage _parseGitPackage(String name, String version, Match gitMatch) {
 }
 
 /// Fetches the latest version of a package from the pub registry.
+///
+/// Encodes [packageName] safely to prevent malformed URI queries.
+/// An existing [client] can be supplied for HTTP connection pooling; if omitted,
+/// a temporary [HttpClient] is created and automatically closed.
+/// Network errors, timeouts, and non-200 HTTP responses can be captured via [onDiagnostic].
 Future<String?> fetchLatestVersion(
   String packageName,
   String registryUrl, {
   HttpClient? client,
   Duration timeout = const Duration(seconds: 10),
+  void Function(String message)? onDiagnostic,
 }) async {
   final httpClient = client ?? HttpClient();
   try {
-    final uri = Uri.parse('$registryUrl/api/packages/$packageName');
+    final encodedName = Uri.encodeComponent(packageName);
+    final normalizedRegistry = registryUrl.endsWith('/')
+        ? registryUrl.substring(0, registryUrl.length - 1)
+        : registryUrl;
+    final uri = Uri.parse('$normalizedRegistry/api/packages/$encodedName');
     final request = await httpClient.getUrl(uri).timeout(timeout);
     final response = await request.close().timeout(timeout);
     if (response.statusCode == 200) {
@@ -347,10 +358,26 @@ Future<String?> fetchLatestVersion(
       final json = jsonDecode(content);
       if (json is Map) {
         return json['latest']?['version']?.toString();
+      } else {
+        onDiagnostic?.call('Unexpected JSON response for $packageName');
       }
+    } else {
+      onDiagnostic?.call(
+        'HTTP ${response.statusCode} (${response.reasonPhrase}) while fetching version for $packageName',
+      );
     }
-  } catch (_) {
-    // Fail silently
+  } on TimeoutException {
+    onDiagnostic?.call(
+      'Request timed out while fetching version for $packageName',
+    );
+  } on SocketException catch (e) {
+    onDiagnostic?.call('Network/socket error for $packageName: ${e.message}');
+  } on HttpException catch (e) {
+    onDiagnostic?.call('HTTP error for $packageName: ${e.message}');
+  } on FormatException catch (e) {
+    onDiagnostic?.call('Format/parsing error for $packageName: ${e.message}');
+  } catch (e) {
+    onDiagnostic?.call('Error fetching version for $packageName: $e');
   } finally {
     if (client == null) {
       httpClient.close();

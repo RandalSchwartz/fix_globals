@@ -169,62 +169,83 @@ packages:
       },
     );
 
-    test('scanInstalledPackages returns empty list when app-bundles does not exist', () async {
-      final tempDir = await Directory.systemTemp.createTemp(
-        'fix_globals_missing_app_bundles_',
-      );
-      try {
-        final installed = scanInstalledPackages(tempDir);
+    test(
+      'scanInstalledPackages returns empty list when app-bundles does not exist',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'fix_globals_missing_app_bundles_',
+        );
+        try {
+          final installed = scanInstalledPackages(tempDir);
+          expect(installed, isEmpty);
+        } finally {
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'scanInstalledPackages returns empty list when installDir does not exist',
+      () {
+        final nonExistentDir = Directory(
+          p.join(
+            Directory.systemTemp.path,
+            'non_existent_dart_install_dir_12345',
+          ),
+        );
+        final installed = scanInstalledPackages(nonExistentDir);
         expect(installed, isEmpty);
-      } finally {
-        await tempDir.delete(recursive: true);
-      }
-    });
+      },
+    );
 
-    test('scanInstalledPackages returns empty list when installDir does not exist', () {
-      final nonExistentDir = Directory(
-        p.join(Directory.systemTemp.path, 'non_existent_dart_install_dir_12345'),
-      );
-      final installed = scanInstalledPackages(nonExistentDir);
-      expect(installed, isEmpty);
-    });
+    test(
+      'parsePackageFromYaml returns null safely on malformed or invalid YAML',
+      () {
+        // Syntax error in YAML
+        expect(parsePackageFromYaml(':::invalid yaml:::', 'foo'), isNull);
+        expect(parsePackageFromYaml('[unclosed bracket', 'foo'), isNull);
 
-    test('parsePackageFromYaml returns null safely on malformed or invalid YAML', () {
-      // Syntax error in YAML
-      expect(parsePackageFromYaml(':::invalid yaml:::', 'foo'), isNull);
-      expect(parsePackageFromYaml('[unclosed bracket', 'foo'), isNull);
+        // Scalar / non-map root YAML documents
+        expect(parsePackageFromYaml('just a plain string', 'foo'), isNull);
+        expect(parsePackageFromYaml('12345', 'foo'), isNull);
+        expect(parsePackageFromYaml('', 'foo'), isNull);
+        expect(parsePackageFromYaml('   \n\n  ', 'foo'), isNull);
 
-      // Scalar / non-map root YAML documents
-      expect(parsePackageFromYaml('just a plain string', 'foo'), isNull);
-      expect(parsePackageFromYaml('12345', 'foo'), isNull);
-      expect(parsePackageFromYaml('', 'foo'), isNull);
-      expect(parsePackageFromYaml('   \n\n  ', 'foo'), isNull);
+        // Map without 'packages' key
+        expect(parsePackageFromYaml('other_key: 42', 'foo'), isNull);
 
-      // Map without 'packages' key
-      expect(parsePackageFromYaml('other_key: 42', 'foo'), isNull);
+        // 'packages' is not a Map
+        expect(
+          parsePackageFromYaml('packages: "string_not_map"', 'foo'),
+          isNull,
+        );
+        expect(parsePackageFromYaml('packages: [1, 2, 3]', 'foo'), isNull);
 
-      // 'packages' is not a Map
-      expect(parsePackageFromYaml('packages: "string_not_map"', 'foo'), isNull);
-      expect(parsePackageFromYaml('packages: [1, 2, 3]', 'foo'), isNull);
+        // Target package is missing
+        expect(
+          parsePackageFromYaml(
+            'packages:\n  bar:\n    version: "1.0.0"',
+            'foo',
+          ),
+          isNull,
+        );
 
-      // Target package is missing
-      expect(
-        parsePackageFromYaml('packages:\n  bar:\n    version: "1.0.0"', 'foo'),
-        isNull,
-      );
+        // Target package entry is not a map
+        expect(
+          parsePackageFromYaml('packages:\n  foo: "scalar_entry"', 'foo'),
+          isNull,
+        );
 
-      // Target package entry is not a map
-      expect(
-        parsePackageFromYaml('packages:\n  foo: "scalar_entry"', 'foo'),
-        isNull,
-      );
-
-      // Target package entry missing source or invalid source
-      expect(
-        parsePackageFromYaml('packages:\n  foo:\n    version: "1.0.0"', 'foo'),
-        isNull,
-      );
-    });
+        // Target package entry missing source or invalid source
+        expect(
+          parsePackageFromYaml(
+            'packages:\n  foo:\n    version: "1.0.0"',
+            'foo',
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('parsePackageFromDir handles non-existent or empty directory', () {
       final nonExistentDir = Directory(
@@ -249,7 +270,10 @@ packages:
           final pkg = parsePackageFromDir(tempDir, 'foo');
           expect(pkg, isNull);
         } finally {
-          await Process.run('chmod', ['644', p.join(tempDir.path, 'pubspec.lock')]);
+          await Process.run('chmod', [
+            '644',
+            p.join(tempDir.path, 'pubspec.lock'),
+          ]);
           await tempDir.delete(recursive: true);
         }
       },
@@ -311,20 +335,120 @@ packages:
       }
     });
 
+    test('properly encodes package names with special characters', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      String? requestedPath;
+      server.listen((request) {
+        requestedPath = request.uri.path;
+        if (request.uri.path == '/api/packages/foo%2Bbar') {
+          request.response
+            ..headers.contentType = ContentType.json
+            ..write(
+              jsonEncode({
+                'latest': {'version': '1.0.0'},
+              }),
+            )
+            ..close();
+        } else {
+          request.response
+            ..statusCode = HttpStatus.notFound
+            ..close();
+        }
+      });
+
+      try {
+        final registryUrl = 'http://${server.address.host}:${server.port}';
+        final latest = await fetchLatestVersion('foo+bar', registryUrl);
+        expect(requestedPath, equals('/api/packages/foo%2Bbar'));
+        expect(latest, equals('1.0.0'));
+      } finally {
+        await server.close();
+      }
+    });
+
+    test('reuses shared HttpClient across multiple requests', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      int requestCount = 0;
+      server.listen((request) {
+        requestCount++;
+        request.response
+          ..headers.contentType = ContentType.json
+          ..write(
+            jsonEncode({
+              'latest': {'version': '1.0.$requestCount'},
+            }),
+          )
+          ..close();
+      });
+
+      final client = HttpClient();
+      try {
+        final registryUrl = 'http://${server.address.host}:${server.port}';
+        final ver1 = await fetchLatestVersion(
+          'pkg1',
+          registryUrl,
+          client: client,
+        );
+        final ver2 = await fetchLatestVersion(
+          'pkg2',
+          registryUrl,
+          client: client,
+        );
+        expect(ver1, equals('1.0.1'));
+        expect(ver2, equals('1.0.2'));
+        expect(requestCount, equals(2));
+      } finally {
+        client.close();
+        await server.close();
+      }
+    });
+
+    test(
+      'reports diagnostic errors when onDiagnostic callback is provided',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((request) {
+          request.response
+            ..statusCode = HttpStatus.internalServerError
+            ..write('Internal error')
+            ..close();
+        });
+
+        final diagnostics = <String>[];
+        try {
+          final registryUrl = 'http://${server.address.host}:${server.port}';
+          final latest = await fetchLatestVersion(
+            'bad_pkg',
+            registryUrl,
+            onDiagnostic: (msg) => diagnostics.add(msg),
+          );
+          expect(latest, isNull);
+          expect(diagnostics, isNotEmpty);
+          expect(diagnostics.any((msg) => msg.contains('500')), isTrue);
+        } finally {
+          await server.close();
+        }
+      },
+    );
+
     test('returns null gracefully on timeout or HTTP error', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       server.listen((request) {
         // Deliberately hold request without responding
       });
 
+      final diagnostics = <String>[];
       try {
         final registryUrl = 'http://${server.address.host}:${server.port}';
         final latest = await fetchLatestVersion(
           'my_package',
           registryUrl,
           timeout: const Duration(milliseconds: 100),
+          onDiagnostic: (msg) => diagnostics.add(msg),
         );
         expect(latest, isNull);
+        expect(diagnostics, isNotEmpty);
+        expect(diagnostics.any((msg) => msg.contains('timed out')), isTrue);
       } finally {
         await server.close();
       }
