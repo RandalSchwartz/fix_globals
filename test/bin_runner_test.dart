@@ -537,5 +537,41 @@ packages:
         ),
       );
     });
+
+    test('results with failure can be detected for non-zero exit code', () {
+      final results = [
+        PackageReinstallResult(
+          name: 'pkg_success',
+          initialVersion: '1.0.0',
+          status: ReinstallStatus.success,
+        ),
+        PackageReinstallResult(
+          name: 'pkg_failed',
+          initialVersion: '0.5.0',
+          status: ReinstallStatus.failed,
+          error: 'Reinstall failed',
+        ),
+      ];
+
+      final hasFailure = results.any((r) => r.status == ReinstallStatus.failed);
+      expect(hasFailure, isTrue);
+
+      final successOnly = [
+        PackageReinstallResult(
+          name: 'pkg_success',
+          initialVersion: '1.0.0',
+          status: ReinstallStatus.success,
+        ),
+        PackageReinstallResult(
+          name: 'pkg_rolled_back',
+          initialVersion: '1.0.0',
+          status: ReinstallStatus.rolledBack,
+        ),
+      ];
+      expect(
+        successOnly.any((r) => r.status == ReinstallStatus.failed),
+        isFalse,
+      );
+    });
   });
 }

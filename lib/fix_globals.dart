@@ -40,7 +40,7 @@ class GlobalPackage {
   String buildDescriptor({bool update = false}) {
     switch (source) {
       case PackageSource.hosted:
-        // TODO: If the Dart SDK someday provides a way to detect whether the package
+        // Note: If the Dart SDK someday provides a way to detect whether the package
         // was installed with a pinned version constraint, respect it here instead
         // of always falling back to installing the latest version.
         return name;
@@ -341,13 +341,20 @@ Future<String?> fetchLatestVersion(
   Duration timeout = const Duration(seconds: 10),
   void Function(String message)? onDiagnostic,
 }) async {
-  final httpClient = client ?? HttpClient();
+  final httpClient = client ?? (HttpClient()..connectionTimeout = timeout);
   try {
     final encodedName = Uri.encodeComponent(packageName);
     final normalizedRegistry = registryUrl.endsWith('/')
         ? registryUrl.substring(0, registryUrl.length - 1)
         : registryUrl;
     final uri = Uri.parse('$normalizedRegistry/api/packages/$encodedName');
+    if (uri.scheme == 'http' &&
+        uri.host != 'localhost' &&
+        uri.host != '127.0.0.1') {
+      onDiagnostic?.call(
+        'Warning: Registry "$registryUrl" uses insecure HTTP instead of HTTPS.',
+      );
+    }
     final request = await httpClient.getUrl(uri).timeout(timeout);
     final response = await request.close().timeout(timeout);
     if (response.statusCode == 200) {

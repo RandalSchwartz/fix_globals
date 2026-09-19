@@ -21,7 +21,7 @@ void main() {
     // Generate reactivation command arguments
     final activationArgs = package.buildActivateArgs();
     print('\nReactivation arguments:');
-    print('  flutter ${activationArgs.join(' ')}');
+    print('  dart ${activationArgs.join(' ')}');
   } else {
     print('Failed to parse package line.');
   }
