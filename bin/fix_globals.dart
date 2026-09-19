@@ -104,134 +104,160 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
 }) async {
   final run = processRunner ?? (exec, args) => Process.run(exec, args);
   final fetchLatest = latestVersionFetcher ?? fetchLatestVersion;
+
   if (update) {
     print('Updating packages...');
   } else {
     print('Reinstalling and recompiling packages...');
   }
+
   final results = <PackageReinstallResult>[];
   for (final pkg in packages) {
     print('--------------------------------------------------');
     print('Processing ${pkg.name} (${pkg.version})...');
 
-    bool shouldInstall = true;
-    if (update &&
-        (pkg.source == PackageSource.hosted ||
-            pkg.source == PackageSource.customHosted)) {
-      final registryUrl = pkg.source == PackageSource.hosted
-          ? 'https://pub.dev'
-          : pkg.origin!;
-      print('Checking for updates from $registryUrl...');
-      final latest = await fetchLatest(pkg.name, registryUrl);
-      if (latest != null) {
-        if (latest == pkg.version) {
-          print(
-            '  ${pkg.name} is already up to date (${pkg.version}). Skipping.',
-          );
-          shouldInstall = false;
-          results.add(
-            PackageReinstallResult(
-              name: pkg.name,
-              initialVersion: pkg.version,
-              status: ReinstallStatus.success,
-            ),
-          );
-        } else {
-          print('  New version available: ${pkg.version} -> $latest');
-        }
-      }
+    if (update && await _isPackageUpToDate(pkg, fetchLatest)) {
+      results.add(
+        PackageReinstallResult(
+          name: pkg.name,
+          initialVersion: pkg.version,
+          status: ReinstallStatus.success,
+        ),
+      );
+      continue;
     }
 
-    if (shouldInstall) {
-      if (!update) {
-        // 1. Uninstall to force recompilation of same-version packages
-        final deactivateArgs = pkg.buildDeactivateArgs();
-        print('Running: dart ${deactivateArgs.join(' ')}');
-        final deactRes = await run('dart', deactivateArgs);
-        if (deactRes.exitCode != 0) {
-          print('Warning: Failed to uninstall ${pkg.name}:');
-          print(deactRes.stderr);
-        }
-      }
-
-      // 2. Install with the original source and parameters (including --overwrite)
-      final activateArgs = pkg.buildActivateArgs(update: update);
-      print('Running: dart ${activateArgs.join(' ')}');
-      final actRes = await run('dart', activateArgs);
-      if (actRes.exitCode != 0) {
-        print('Error: Failed to install ${pkg.name}!');
-        print(actRes.stderr);
-        print('');
-
-        if (!update) {
-          print(
-            '[ROLLBACK] Attempting to restore original version ${pkg.name} (${pkg.version})...',
-          );
-
-          // Rollback reactivation attempt using the original descriptor
-          final rollbackArgs = pkg.buildActivateArgs(update: false);
-          final rollbackRes = await run('dart', rollbackArgs);
-          if (rollbackRes.exitCode != 0) {
-            print(
-              '[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.',
-            );
-            print(rollbackRes.stderr);
-            print(
-              '\nTo manually restore, resolve any network/environment issues and run:',
-            );
-            print('  dart ${rollbackArgs.join(' ')}\n');
-            results.add(
-              PackageReinstallResult(
-                name: pkg.name,
-                initialVersion: pkg.version,
-                status: ReinstallStatus.failed,
-                error: actRes.stderr.toString(),
-              ),
-            );
-          } else {
-            print(
-              '[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.',
-            );
-            results.add(
-              PackageReinstallResult(
-                name: pkg.name,
-                initialVersion: pkg.version,
-                status: ReinstallStatus.rolledBack,
-              ),
-            );
-          }
-        } else {
-          // For updates, the old version is still safely active on error
-          results.add(
-            PackageReinstallResult(
-              name: pkg.name,
-              initialVersion: pkg.version,
-              status: ReinstallStatus.failed,
-              error: actRes.stderr.toString(),
-            ),
-          );
-        }
-      } else {
-        final out = actRes.stdout.toString().trim();
-        if (out.isNotEmpty) {
-          print(out);
-        }
-        if (update) {
-          print('Successfully updated/checked ${pkg.name}!');
-        } else {
-          print('Successfully reinstalled and recompiled ${pkg.name}!');
-        }
-        results.add(
-          PackageReinstallResult(
-            name: pkg.name,
-            initialVersion: pkg.version,
-            status: ReinstallStatus.success,
-          ),
-        );
-      }
-    }
+    final result = await _reinstallSinglePackage(pkg, update: update, run: run);
+    results.add(result);
   }
   return results;
+}
+
+Future<bool> _isPackageUpToDate(
+  GlobalPackage pkg,
+  Future<String?> Function(String packageName, String registryUrl) fetchLatest,
+) async {
+  if (pkg.source != PackageSource.hosted &&
+      pkg.source != PackageSource.customHosted) {
+    return false;
+  }
+
+  final registryUrl = pkg.source == PackageSource.hosted
+      ? 'https://pub.dev'
+      : pkg.origin!;
+  print('Checking for updates from $registryUrl...');
+  final latest = await fetchLatest(pkg.name, registryUrl);
+  if (latest == null) return false;
+
+  if (latest == pkg.version) {
+    print('  ${pkg.name} is already up to date (${pkg.version}). Skipping.');
+    return true;
+  }
+
+  print('  New version available: ${pkg.version} -> $latest');
+  return false;
+}
+
+Future<PackageReinstallResult> _reinstallSinglePackage(
+  GlobalPackage pkg, {
+  required bool update,
+  required Future<ProcessResult> Function(String executable, List<String> args)
+  run,
+}) async {
+  if (!update) {
+    // 1. Uninstall to force recompilation of same-version packages
+    final deactivateArgs = pkg.buildDeactivateArgs();
+    print('Running: dart ${deactivateArgs.join(' ')}');
+    final deactRes = await run('dart', deactivateArgs);
+    if (deactRes.exitCode != 0) {
+      print('Warning: Failed to uninstall ${pkg.name}:');
+      print(deactRes.stderr);
+    }
+  }
+
+  // 2. Install with the original source and parameters (including --overwrite)
+  final activateArgs = pkg.buildActivateArgs(update: update);
+  print('Running: dart ${activateArgs.join(' ')}');
+  final actRes = await run('dart', activateArgs);
+  if (actRes.exitCode != 0) {
+    return _handleInstallFailure(pkg, actRes, update: update, run: run);
+  }
+
+  final out = actRes.stdout.toString().trim();
+  if (out.isNotEmpty) {
+    print(out);
+  }
+  if (update) {
+    print('Successfully updated/checked ${pkg.name}!');
+  } else {
+    print('Successfully reinstalled and recompiled ${pkg.name}!');
+  }
+  return PackageReinstallResult(
+    name: pkg.name,
+    initialVersion: pkg.version,
+    status: ReinstallStatus.success,
+  );
+}
+
+Future<PackageReinstallResult> _handleInstallFailure(
+  GlobalPackage pkg,
+  ProcessResult actRes, {
+  required bool update,
+  required Future<ProcessResult> Function(String executable, List<String> args)
+  run,
+}) async {
+  print('Error: Failed to install ${pkg.name}!');
+  print(actRes.stderr);
+  print('');
+
+  if (update) {
+    // For updates, the old version is still safely active on error
+    return PackageReinstallResult(
+      name: pkg.name,
+      initialVersion: pkg.version,
+      status: ReinstallStatus.failed,
+      error: actRes.stderr.toString(),
+    );
+  }
+
+  return _rollbackPackage(pkg, actRes, run);
+}
+
+Future<PackageReinstallResult> _rollbackPackage(
+  GlobalPackage pkg,
+  ProcessResult actRes,
+  Future<ProcessResult> Function(String executable, List<String> args) run,
+) async {
+  print(
+    '[ROLLBACK] Attempting to restore original version ${pkg.name} (${pkg.version})...',
+  );
+
+  // Rollback reactivation attempt using the original descriptor
+  final rollbackArgs = pkg.buildActivateArgs(update: false);
+  final rollbackRes = await run('dart', rollbackArgs);
+  if (rollbackRes.exitCode != 0) {
+    print('[ROLLBACK FAILED] Could not restore ${pkg.name} automatically.');
+    print(rollbackRes.stderr);
+    print(
+      '\nTo manually restore, resolve any network/environment issues and run:',
+    );
+    print('  dart ${rollbackArgs.join(' ')}\n');
+    return PackageReinstallResult(
+      name: pkg.name,
+      initialVersion: pkg.version,
+      status: ReinstallStatus.failed,
+      error: actRes.stderr.toString(),
+    );
+  }
+
+  print(
+    '[ROLLBACK SUCCESSFUL] Successfully restored ${pkg.name} to its original state.',
+  );
+  return PackageReinstallResult(
+    name: pkg.name,
+    initialVersion: pkg.version,
+    status: ReinstallStatus.rolledBack,
+  );
 }
 
 void printSummaryTable(
