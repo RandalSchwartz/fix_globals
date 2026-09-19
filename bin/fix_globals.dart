@@ -103,7 +103,6 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
   latestVersionFetcher,
 }) async {
   final run = processRunner ?? (exec, args) => Process.run(exec, args);
-  final fetchLatest = latestVersionFetcher ?? fetchLatestVersion;
 
   if (update) {
     print('Updating packages...');
@@ -111,32 +110,75 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
     print('Reinstalling and recompiling packages...');
   }
 
-  final results = <PackageReinstallResult>[];
-  for (final pkg in packages) {
-    print('--------------------------------------------------');
-    print('Processing ${pkg.name} (${pkg.version})...');
+  HttpClient? sharedClient;
+  Future<String?> Function(String packageName, String registryUrl) fetchLatest;
 
-    if (update && await _isPackageUpToDate(pkg, fetchLatest)) {
-      results.add(
-        PackageReinstallResult(
-          name: pkg.name,
-          initialVersion: pkg.version,
-          status: ReinstallStatus.success,
-        ),
-      );
-      continue;
+  if (latestVersionFetcher != null) {
+    fetchLatest = latestVersionFetcher;
+  } else {
+    sharedClient = HttpClient();
+    fetchLatest = (packageName, registryUrl) => fetchLatestVersion(
+      packageName,
+      registryUrl,
+      client: sharedClient,
+      onDiagnostic: (msg) => print('  [$packageName] $msg'),
+    );
+  }
+
+  try {
+    Map<String, String?> latestVersions = {};
+    if (update) {
+      final checkEligible = packages
+          .where(
+            (pkg) =>
+                pkg.source == PackageSource.hosted ||
+                pkg.source == PackageSource.customHosted,
+          )
+          .toList();
+
+      if (checkEligible.isNotEmpty) {
+        final versionFutures = checkEligible.map((pkg) async {
+          final registryUrl = pkg.source == PackageSource.hosted
+              ? 'https://pub.dev'
+              : pkg.origin!;
+          final latest = await fetchLatest(pkg.name, registryUrl);
+          return MapEntry(pkg.name, latest);
+        });
+        final entries = await Future.wait(versionFutures);
+        latestVersions = Map.fromEntries(entries);
+      }
     }
 
-    final result = await _reinstallSinglePackage(pkg, update: update, run: run);
-    results.add(result);
+    final results = <PackageReinstallResult>[];
+    for (final pkg in packages) {
+      print('--------------------------------------------------');
+      print('Processing ${pkg.name} (${pkg.version})...');
+
+      if (update && _checkUpToDate(pkg, latestVersions[pkg.name])) {
+        results.add(
+          PackageReinstallResult(
+            name: pkg.name,
+            initialVersion: pkg.version,
+            status: ReinstallStatus.success,
+          ),
+        );
+        continue;
+      }
+
+      final result = await _reinstallSinglePackage(
+        pkg,
+        update: update,
+        run: run,
+      );
+      results.add(result);
+    }
+    return results;
+  } finally {
+    sharedClient?.close();
   }
-  return results;
 }
 
-Future<bool> _isPackageUpToDate(
-  GlobalPackage pkg,
-  Future<String?> Function(String packageName, String registryUrl) fetchLatest,
-) async {
+bool _checkUpToDate(GlobalPackage pkg, String? latest) {
   if (pkg.source != PackageSource.hosted &&
       pkg.source != PackageSource.customHosted) {
     return false;
@@ -146,7 +188,6 @@ Future<bool> _isPackageUpToDate(
       ? 'https://pub.dev'
       : pkg.origin!;
   print('Checking for updates from $registryUrl...');
-  final latest = await fetchLatest(pkg.name, registryUrl);
   if (latest == null) return false;
 
   if (latest == pkg.version) {

@@ -348,6 +348,48 @@ void main() {
         expect(results[0].error, contains('Update failed'));
       },
     );
+
+    test(
+      'update flow executes version checks concurrently across packages',
+      () async {
+        final pkg1 = GlobalPackage(
+          name: 'pkg_one',
+          version: '1.0.0',
+          source: PackageSource.hosted,
+        );
+        final pkg2 = GlobalPackage(
+          name: 'pkg_two',
+          version: '1.0.0',
+          source: PackageSource.hosted,
+        );
+
+        final checkOrder = <String>[];
+        int activeChecks = 0;
+        int maxConcurrentChecks = 0;
+
+        final results = await executePackageReinstalls(
+          [pkg1, pkg2],
+          update: true,
+          latestVersionFetcher: (pkg, registry) async {
+            activeChecks++;
+            if (activeChecks > maxConcurrentChecks) {
+              maxConcurrentChecks = activeChecks;
+            }
+            checkOrder.add('start_$pkg');
+            await Future.delayed(const Duration(milliseconds: 50));
+            checkOrder.add('end_$pkg');
+            activeChecks--;
+            return '1.0.0'; // up to date
+          },
+          processRunner: (exec, args) async => ProcessResult(1, 0, '', ''),
+        );
+
+        expect(maxConcurrentChecks, equals(2));
+        expect(results, hasLength(2));
+        expect(results[0].status, equals(ReinstallStatus.success));
+        expect(results[1].status, equals(ReinstallStatus.success));
+      },
+    );
   });
 
   group('printSummaryTable tests', () {
