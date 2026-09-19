@@ -453,6 +453,43 @@ packages:
         await server.close();
       }
     });
+
+    test(
+      'emits diagnostic warning when custom registry uses insecure HTTP',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+        server.listen((request) {
+          request.response
+            ..statusCode = HttpStatus.ok
+            ..headers.contentType = ContentType.json
+            ..write('{"latest": {"version": "1.0.0"}}')
+            ..close();
+        });
+
+        final diagnostics = <String>[];
+        try {
+          // Use non-localhost address/domain to trigger insecure HTTP warning
+          final registryUrl = 'http://custom-pkg-host.org:${server.port}';
+          await fetchLatestVersion(
+            'test_pkg',
+            registryUrl,
+            client: HttpClient(),
+            timeout: const Duration(milliseconds: 50),
+            onDiagnostic: (msg) => diagnostics.add(msg),
+          );
+          expect(
+            diagnostics.any(
+              (msg) =>
+                  msg.contains('Warning:') &&
+                  msg.contains('uses insecure HTTP instead of HTTPS'),
+            ),
+            isTrue,
+          );
+        } finally {
+          await server.close();
+        }
+      },
+    );
   });
 
   group('GlobalPackage Parser tests (pub global list text)', () {

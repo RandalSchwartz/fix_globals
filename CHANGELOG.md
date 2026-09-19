@@ -1,3 +1,20 @@
+## 1.4.0
+
+- CLI & error handling enhancements:
+  - `fix-globals` now exits with status code `1` if any package fails to reinstall.
+  - Added a 10-second connection timeout to the shared HTTP client to prevent hung TCP handshakes during registry version queries.
+  - Added insecure HTTP warnings when custom hosted package registries are configured with `http://` instead of `https://`.
+  - Rephrased legacy `TODO` comment in descriptor builder into an architectural note.
+  - Updated `example/example.dart` to invoke `dart` rather than `flutter`.
+- CI infrastructure:
+  - Added GitHub Actions CI workflow running `dart analyze --fatal-infos` and `dart test` on push and PR.
+  - Hardened automated Gemini code review workflow.
+- Testing and architecture improvements (from PRs #7, #8, #9, and #10):
+  - Added edge-case and failure-mode testing for package parsing and lockfile scanning.
+  - Added comprehensive test suite for the CLI runner, dry run mode, and rollback recovery.
+  - Refactored and flattened high-cyclomatic-complexity parsing and reinstall methods into clean single-responsibility helpers.
+  - Hardened HTTP client lifecycle, connection pooling, and concurrent registry version checks.
+
 ## 1.3.1
 
 - Lowered minimum Dart SDK constraint to `^3.11.0` for broader compatibility across Dart 3.11+ environments.

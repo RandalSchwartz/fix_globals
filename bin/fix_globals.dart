@@ -70,6 +70,10 @@ Future<void> main(List<String> arguments) async {
 
   final results = await executePackageReinstalls(packages, update: update);
   printSummaryTable(results, installDir, update: update);
+
+  if (results.any((r) => r.status == ReinstallStatus.failed)) {
+    exit(1);
+  }
 }
 
 void printDryRun(List<GlobalPackage> packages, {required bool update}) {
@@ -116,7 +120,8 @@ Future<List<PackageReinstallResult>> executePackageReinstalls(
   if (latestVersionFetcher != null) {
     fetchLatest = latestVersionFetcher;
   } else {
-    sharedClient = HttpClient();
+    sharedClient = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     fetchLatest = (packageName, registryUrl) => fetchLatestVersion(
       packageName,
       registryUrl,
